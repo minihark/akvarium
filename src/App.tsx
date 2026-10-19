@@ -9,11 +9,12 @@ import {
   WaterZone,
 } from './types';
 import { FISH_SPECIES, STARTER_PRESETS, EQUIPMENT_CHECKLIST } from './data/species';
+import { getKidMeta } from './data/kidExtras';
 import { analyzeTank } from './utils/compatibility';
 import { InteractiveAquarium } from './components/InteractiveAquarium';
 import { FishIllustration } from './components/FishIllustration';
 import { SpeciesDetailModal } from './components/SpeciesDetailModal';
-import { playBubbleSound, playFeedSplashSound } from './utils/audio';
+import { playBubbleSound, playFeedSplashSound, speakKidsText } from './utils/audio';
 import confetti from 'canvas-confetti';
 import {
   Fish,
@@ -35,6 +36,7 @@ import {
   Globe,
   Check,
   BookOpen,
+  Volume2,
 } from 'lucide-react';
 
 const STORAGE_KEY_TANK = 'fena_active_tank_v1';
@@ -238,13 +240,13 @@ export function App() {
   }, [selectedCategory, selectedZone, onlyCompatibleWithTankSize, tankLiters, searchQuery]);
 
   const categories: { id: FishCategory | 'all'; labelSv: string; labelEn: string }[] = [
-    { id: 'all', labelSv: 'Alla arter (15)', labelEn: 'All Species (15)' },
-    { id: 'tetras_schooling', labelSv: 'Stimfiskar & Tetror', labelEn: 'Schooling & Tetras' },
-    { id: 'livebearers', labelSv: 'Guppy, Platy & Färg', labelEn: 'Livebearers (Guppy/Platy)' },
-    { id: 'centerpiece', labelSv: 'Kampfisk & Gurami', labelEn: 'Centerpiece (Betta/Gourami)' },
-    { id: 'cichlids_special', labelSv: 'Snälla Ciklider & Skalar', labelEn: 'Cichlids & Angelfish' },
-    { id: 'bottom_algae', labelSv: 'Bottenfiskar & Algätare', labelEn: 'Bottom & Algae Crew' },
-    { id: 'shrimp_snails', labelSv: 'Räkor & Snäckor', labelEn: 'Shrimp & Snails' },
+    { id: 'all', labelSv: '🐠 Alla arter (21)', labelEn: '🐠 All Species (21)' },
+    { id: 'tetras_schooling', labelSv: '⚡ Stimfiskar & Tetror', labelEn: '⚡ Schooling & Tetras' },
+    { id: 'livebearers', labelSv: '🌈 Guppy, Platy & Svärd', labelEn: '🌈 Livebearers (Guppy/Platy)' },
+    { id: 'centerpiece', labelSv: '👑 Kampfisk & Gurami', labelEn: '👑 Centerpiece (Betta/Gourami)' },
+    { id: 'cichlids_special', labelSv: '⛵ Ciklider & Skalar', labelEn: '⛵ Cichlids & Angelfish' },
+    { id: 'bottom_algae', labelSv: '🧹 Botten & Alg-städare', labelEn: '🧹 Bottom & Algae Crew' },
+    { id: 'shrimp_snails', labelSv: '🍒 Räkor & Snäckor', labelEn: '🍒 Shrimp & Snails' },
   ];
 
   const tankSizes = [30, 45, 54, 60, 80, 110, 180, 240];
@@ -435,11 +437,18 @@ export function App() {
                 {fishEntries.map((entry) => {
                   const sp = FISH_SPECIES.find((s) => s.id === entry.speciesId);
                   if (!sp) return null;
+                  const meta = getKidMeta(sp.id);
                   return (
                     <div
                       key={sp.id}
-                      className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-xl bg-abyss-950 border border-cyan-500/30 text-xs"
+                      className="inline-flex items-center gap-1.5 pl-1.5 pr-1.5 py-1 rounded-xl bg-abyss-950 border border-cyan-500/30 text-xs"
                     >
+                      <img
+                        src={meta.photoUrl}
+                        alt={sp.nameSv}
+                        onClick={() => setInspectedSpecies(sp)}
+                        className="w-6 h-6 rounded-lg object-cover border border-cyan-400/40 cursor-pointer"
+                      />
                       <button
                         onClick={() => setInspectedSpecies(sp)}
                         className="font-bold text-white hover:text-cyan-300 cursor-pointer"
@@ -556,15 +565,15 @@ export function App() {
                           : 'All Zones'
                         : z === 'top'
                         ? lang === 'sv'
-                          ? 'Yta'
-                          : 'Top'
+                          ? '⬆️ Yta'
+                          : '⬆️ Top'
                         : z === 'middle'
                         ? lang === 'sv'
-                          ? 'Mitten'
-                          : 'Middle'
+                          ? '↔️ Mitten'
+                          : '↔️ Middle'
                         : lang === 'sv'
-                        ? 'Botten'
-                        : 'Bottom'}
+                        ? '⬇️ Botten'
+                        : '⬇️ Bottom'}
                     </button>
                   ))}
 
@@ -608,114 +617,159 @@ export function App() {
                 const count = getCountForSpecies(sp.id);
                 const conflictName = hasConflictWithCurrentTank(sp);
                 const tooSmallTank = sp.minTankLiters > tankLiters;
+                const kidMeta = getKidMeta(sp.id);
 
                 return (
                   <div
                     key={sp.id}
                     onClick={() => setInspectedSpecies(sp)}
-                    className={`rounded-3xl border p-5 transition-all flex flex-col justify-between gap-4 cursor-pointer group ${
+                    className={`rounded-3xl border overflow-hidden transition-all flex flex-col justify-between cursor-pointer group ${
                       count > 0
-                        ? 'bg-abyss-900/95 border-cyan-400/60 shadow-xl shadow-cyan-500/10 ring-1 ring-cyan-400/30'
-                        : 'bg-abyss-900/75 border-slate-800/90 hover:border-cyan-500/40 hover:bg-abyss-900'
+                        ? 'bg-abyss-900/95 border-cyan-400/70 shadow-xl shadow-cyan-500/15 ring-2 ring-cyan-400/35'
+                        : 'bg-abyss-900/80 border-slate-800/90 hover:border-cyan-500/50 hover:bg-abyss-900'
                     }`}
                   >
-                    <div className="space-y-3">
-                      {/* Top row: Illustration & Title */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded-full bg-abyss-950 border border-slate-700 text-[10px] font-bold text-cyan-300">
-                              {sp.zone === 'top'
-                                ? lang === 'sv'
-                                  ? 'Yta'
-                                  : 'Top'
-                                : sp.zone === 'middle'
-                                ? lang === 'sv'
-                                  ? 'Mitten'
-                                  : 'Middle'
-                                : sp.zone === 'bottom'
-                                ? lang === 'sv'
-                                  ? 'Botten'
-                                  : 'Bottom'
-                                : lang === 'sv'
-                                ? 'Hela'
-                                : 'All'}
-                            </span>
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                sp.temperament === 'peaceful'
-                                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                                  : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                              }`}
-                            >
-                              {sp.temperament === 'peaceful'
-                                ? lang === 'sv'
-                                  ? 'Fredlig'
-                                  : 'Peaceful'
-                                : sp.temperament === 'territorial'
-                                ? lang === 'sv'
-                                  ? 'Revir/Ensam'
-                                  : 'Territorial'
-                                : lang === 'sv'
-                                ? 'Livlig'
-                                : 'Active'}
-                            </span>
-                          </div>
+                    {/* Top Real Fish Photograph Banner */}
+                    <div>
+                      <div className="relative h-44 w-full bg-abyss-950 overflow-hidden">
+                        <img
+                          src={kidMeta.photoUrl}
+                          alt={lang === 'sv' ? sp.nameSv : sp.nameEn}
+                          loading="lazy"
+                          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-abyss-900 via-transparent to-black/25" />
 
-                          <h3 className="text-lg sm:text-xl font-black text-white group-hover:text-cyan-300 transition-colors">
-                            {lang === 'sv' ? sp.nameSv : sp.nameEn}
+                        {/* Zone + Temperament Badges */}
+                        <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
+                          <span className="px-2.5 py-0.5 rounded-full bg-abyss-950/85 backdrop-blur-md border border-cyan-400/35 text-[10px] font-extrabold text-cyan-200">
+                            {sp.zone === 'top'
+                              ? lang === 'sv'
+                                ? '⬆️ Yta'
+                                : '⬆️ Top'
+                              : sp.zone === 'middle'
+                              ? lang === 'sv'
+                                ? '↔️ Mitten'
+                                : '↔️ Middle'
+                              : sp.zone === 'bottom'
+                              ? lang === 'sv'
+                                ? '⬇️ Botten'
+                                : '⬇️ Bottom'
+                              : lang === 'sv'
+                              ? '🌊 Hela'
+                              : '🌊 All'}
+                          </span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold backdrop-blur-md ${
+                              sp.temperament === 'peaceful'
+                                ? 'bg-emerald-950/85 text-emerald-300 border border-emerald-400/40'
+                                : 'bg-amber-950/85 text-amber-300 border border-amber-400/40'
+                            }`}
+                          >
+                            {sp.temperament === 'peaceful'
+                              ? lang === 'sv'
+                                ? '💚 Snäll'
+                                : '💚 Peaceful'
+                              : sp.temperament === 'territorial'
+                              ? lang === 'sv'
+                                ? '👑 Ensamkung'
+                                : '👑 Territorial'
+                              : lang === 'sv'
+                              ? '⚡ Livlig'
+                              : '⚡ Active'}
+                          </span>
+                        </div>
+
+                        {/* Read Aloud Speaker Button on Card */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playBubbleSound();
+                            if (lang === 'sv') {
+                              speakKidsText(
+                                `${sp.nameSv}. ${kidMeta.superpowerSv} Visste du att: ${sp.funFactSv}`,
+                                'sv'
+                              );
+                            } else {
+                              speakKidsText(
+                                `${sp.nameEn}. ${kidMeta.superpowerEn} Fun fact: ${sp.funFactEn}`,
+                                'en'
+                              );
+                            }
+                          }}
+                          className="absolute top-3 right-3 px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] flex items-center gap-1 shadow-lg cursor-pointer transition active:scale-95"
+                          title={lang === 'sv' ? 'Lyssna på fisken!' : 'Listen!'}
+                        >
+                          <Volume2 className="w-3.5 h-3.5" />
+                          <span>{lang === 'sv' ? 'Lyssna' : 'Listen'}</span>
+                        </button>
+
+                        {/* Floating Animated SVG Mini-Badge */}
+                        <div className="absolute bottom-2 right-3 w-16 h-11 rounded-xl bg-abyss-950/85 backdrop-blur-md border border-cyan-400/35 flex items-center justify-center p-1 shadow-lg">
+                          <FishIllustration visual={sp.visual} className="w-14 h-9" />
+                        </div>
+
+                        {/* Count Badge if in Tank */}
+                        {count > 0 && (
+                          <div className="absolute bottom-2 left-3 px-2.5 py-1 rounded-xl bg-cyan-400 text-slate-950 font-black text-xs shadow-lg">
+                            ✓ {count} st i akvariet
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Body */}
+                      <div className="p-4 sm:p-5 space-y-3">
+                        <div>
+                          <h3 className="text-lg sm:text-xl font-black text-white group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
+                            <span>{kidMeta.emoji}</span>
+                            <span>{lang === 'sv' ? sp.nameSv : sp.nameEn}</span>
                           </h3>
                           <p className="text-[11px] italic text-slate-400">
                             {sp.scientificName} • {sp.sizeCm} cm
                           </p>
                         </div>
 
-                        {/* Fish SVG Preview */}
-                        <div className="w-24 h-16 rounded-2xl bg-abyss-950/90 border border-slate-800 flex items-center justify-center p-2 group-hover:scale-105 transition-transform flex-shrink-0">
-                          <FishIllustration visual={sp.visual} className="w-20 h-12" />
+                        {/* Superpower Kid Pill */}
+                        <div className="px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-400/30 text-xs font-extrabold text-cyan-200">
+                          ✨ {lang === 'sv' ? kidMeta.superpowerSv : kidMeta.superpowerEn}
                         </div>
-                      </div>
 
-                      {/* Description */}
-                      <p className="text-xs text-slate-300 leading-relaxed line-clamp-3">
-                        {lang === 'sv' ? sp.summarySv : sp.summaryEn}
-                      </p>
-
-                      {/* Kid Fun Fact Teaser */}
-                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200 flex items-start gap-2">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
-                        <span className="line-clamp-2">
-                          {lang === 'sv' ? sp.funFactSv : sp.funFactEn}
-                        </span>
-                      </div>
-
-                      {/* Compatibility / Tank Size Alerts on Card */}
-                      {(conflictName || tooSmallTank) && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {tooSmallTank && (
-                            <span className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3" />
-                              {lang === 'sv'
-                                ? `Kräver minst ${sp.minTankLiters}L`
-                                : `Needs ${sp.minTankLiters}L+`}
-                            </span>
-                          )}
-                          {conflictName && (
-                            <span className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3" />
-                              {lang === 'sv'
-                                ? `Passar ej med ${conflictName}`
-                                : `Clashes with ${conflictName}`}
-                            </span>
-                          )}
+                        {/* Kid Fun Fact Teaser */}
+                        <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-100 flex items-start gap-2">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <span className="line-clamp-2 font-medium">
+                            {lang === 'sv' ? sp.funFactSv : sp.funFactEn}
+                          </span>
                         </div>
-                      )}
+
+                        {/* Compatibility / Tank Size Alerts on Card */}
+                        {(conflictName || tooSmallTank) && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {tooSmallTank && (
+                              <span className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                {lang === 'sv'
+                                  ? `Behöver ${sp.minTankLiters}L+`
+                                  : `Needs ${sp.minTankLiters}L+`}
+                              </span>
+                            )}
+                            {conflictName && (
+                              <span className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                {lang === 'sv'
+                                  ? `Passar ej med ${conflictName}`
+                                  : `Clashes with ${conflictName}`}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Card Bottom Bar: Specs & Add Controls */}
                     <div
                       onClick={(e) => e.stopPropagation()}
-                      className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2"
+                      className="px-4 sm:px-5 py-3 bg-abyss-950/60 border-t border-slate-800/80 flex items-center justify-between gap-2"
                     >
                       <div className="text-[11px] text-slate-400 font-mono">
                         <span>Minst {sp.minTankLiters}L</span> •{' '}
@@ -727,17 +781,17 @@ export function App() {
                       {count === 0 ? (
                         <button
                           onClick={() => handleQuickAddSpecies(sp)}
-                          className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-400 text-cyan-200 hover:text-slate-950 border border-cyan-400/40 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer"
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 active:scale-95 text-slate-950 font-black text-xs transition flex items-center gap-1 shadow-md shadow-cyan-500/15 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>
                             {lang === 'sv'
                               ? sp.minGroupSize > 1
-                                ? `Lägg till stim (${sp.recommendedGroupSize} st)`
-                                : 'Lägg i akvariet'
+                                ? `Plums i! (${sp.recommendedGroupSize} st)`
+                                : 'Plums i akvariet!'
                               : sp.minGroupSize > 1
-                              ? `Add school (${sp.recommendedGroupSize})`
-                              : 'Add to tank'}
+                              ? `Splash in! (${sp.recommendedGroupSize})`
+                              : 'Splash in!'}
                           </span>
                         </button>
                       ) : (

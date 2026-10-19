@@ -1,8 +1,9 @@
 import React from 'react';
 import { FishSpecies, Language } from '../types';
 import { FISH_SPECIES } from '../data/species';
+import { getKidMeta } from '../data/kidExtras';
 import { FishIllustration } from './FishIllustration';
-import { playBubbleSound } from '../utils/audio';
+import { playBubbleSound, speakKidsText } from '../utils/audio';
 import {
   X,
   Sparkles,
@@ -17,6 +18,7 @@ import {
   Compass,
   Utensils,
   Layers,
+  Volume2,
 } from 'lucide-react';
 
 interface SpeciesDetailModalProps {
@@ -38,10 +40,12 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
 }) => {
   if (!species) return null;
 
+  const kidMeta = getKidMeta(species.id);
+
   const zoneLabel = () => {
-    if (species.zone === 'top') return lang === 'sv' ? 'Ytskiktet (Top)' : 'Top / Surface';
+    if (species.zone === 'top') return lang === 'sv' ? 'Ytskiktet (Uppe vid ytan)' : 'Top / Surface';
     if (species.zone === 'middle') return lang === 'sv' ? 'Mellanskiktet (Mitten)' : 'Mid-water';
-    if (species.zone === 'bottom') return lang === 'sv' ? 'Bottenskiktet (Botten)' : 'Bottom Dweller';
+    if (species.zone === 'bottom') return lang === 'sv' ? 'Bottenskiktet (På botten)' : 'Bottom Dweller';
     return lang === 'sv' ? 'Hela akvariet' : 'All Water Layers';
   };
 
@@ -54,6 +58,17 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
     }
   };
 
+  const handleReadAloud = () => {
+    playBubbleSound();
+    if (lang === 'sv') {
+      const text = `${species.nameSv}. Superkraft: ${kidMeta.superpowerSv} Visste du att: ${species.funFactSv}`;
+      speakKidsText(text, 'sv');
+    } else {
+      const text = `${species.nameEn}. Superpower: ${kidMeta.superpowerEn} Fun fact: ${species.funFactEn}`;
+      speakKidsText(text, 'en');
+    }
+  };
+
   return (
     <div
       onClick={onClose}
@@ -61,66 +76,174 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative max-w-2xl w-full bg-abyss-900 border border-cyan-500/30 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative max-w-2xl w-full bg-abyss-900 border-2 border-cyan-400/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
       >
-        {/* Top Hero Banner */}
-        <div className="relative px-6 py-6 bg-gradient-to-br from-abyss-950 via-abyss-850 to-abyss-900 border-b border-cyan-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-28 h-20 rounded-2xl bg-abyss-950/90 border border-cyan-500/25 flex items-center justify-center p-2 shadow-inner">
-              <FishIllustration visual={species.visual} className="w-24 h-16" />
-            </div>
+        {/* Top Real Photo Hero Header */}
+        <div className="relative h-52 sm:h-64 w-full bg-abyss-950 overflow-hidden flex-shrink-0">
+          <img
+            src={kidMeta.photoUrl}
+            alt={lang === 'sv' ? species.nameSv : species.nameEn}
+            className="w-full h-full object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-abyss-900 via-abyss-950/35 to-transparent" />
+
+          {/* Floating Animated Vector Fish Badge */}
+          <div className="absolute top-3 left-3 px-3 py-1.5 rounded-2xl bg-abyss-950/85 backdrop-blur-md border border-cyan-400/40 flex items-center gap-2 shadow-lg">
+            <FishIllustration visual={species.visual} className="w-12 h-8" />
+            <span className="text-[11px] font-extrabold text-cyan-200">
+              {kidMeta.emoji} {lang === 'sv' ? 'Så simmar jag!' : 'In the tank!'}
+            </span>
+          </div>
+
+          {/* Read Aloud Speaker Button for 5-year-olds */}
+          <button
+            onClick={handleReadAloud}
+            className="absolute top-3 right-14 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-400 hover:brightness-110 active:scale-95 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-xl cursor-pointer transition"
+          >
+            <Volume2 className="w-4 h-4" />
+            <span>{lang === 'sv' ? '🔊 Lyssna!' : '🔊 Read Aloud!'}</span>
+          </button>
+
+          {/* Close Button */}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 p-2 rounded-2xl bg-abyss-950/85 text-slate-200 hover:text-white hover:bg-abyss-800 border border-slate-700 transition cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {/* Title overlay at bottom of photo */}
+          <div className="absolute bottom-3 inset-x-5 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 text-[11px] font-bold">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/30 backdrop-blur-md text-cyan-200 border border-cyan-300/40 text-[11px] font-extrabold">
                   {species.careLevel === 'easy'
                     ? lang === 'sv'
-                      ? 'Nybörjarvänlig'
-                      : 'Beginner Friendly'
+                      ? '⭐ Enkel nybörjarfisk'
+                      : '⭐ Easy Beginner Fish'
                     : lang === 'sv'
                     ? 'Medelsvår'
                     : 'Intermediate'}
                 </span>
-                <span className="text-xs italic text-slate-400 font-serif">
+                <span className="text-xs italic text-slate-200/90 font-serif bg-abyss-950/60 px-2 py-0.5 rounded-full">
                   {species.scientificName}
                 </span>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-black text-white mt-1">
-                {lang === 'sv' ? species.nameSv : species.nameEn}
+              <h2 className="text-2xl sm:text-3xl font-black text-white drop-shadow-md">
+                {kidMeta.emoji} {lang === 'sv' ? species.nameSv : species.nameEn}
               </h2>
-              <p className="text-xs text-cyan-300/90 font-medium mt-0.5">
-                {lang === 'sv' ? `Engelska: ${species.nameEn}` : `Swedish: ${species.nameSv}`}
-              </p>
             </div>
           </div>
-
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-xl bg-abyss-950/80 text-slate-400 hover:text-white hover:bg-abyss-800 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         {/* Scrollable Content */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Kid Superpower Banner */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-cyan-500/20 via-teal-500/15 to-cyan-500/20 border border-cyan-400/40 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{kidMeta.emoji}</span>
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                  {lang === 'sv' ? 'Superkraft i akvariet' : 'Aquarium Superpower'}
+                </div>
+                <div className="text-sm sm:text-base font-black text-white">
+                  {lang === 'sv' ? kidMeta.superpowerSv : kidMeta.superpowerEn}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Kid-Friendly Fun Fact Box */}
+          <div
+            onClick={handleReadAloud}
+            className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 border-2 border-amber-400/40 flex items-start gap-3.5 cursor-pointer hover:border-amber-300 transition"
+            title={lang === 'sv' ? 'Tryck för att lyssna!' : 'Tap to listen!'}
+          >
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div className="space-y-1 flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-300">
+                  {lang === 'sv' ? '🌟 Visste du att? (Tryck för att lyssna)' : '🌟 Fun Fact! (Tap to listen)'}
+                </span>
+                <Volume2 className="w-4 h-4 text-amber-300" />
+              </div>
+              <p className="text-xs sm:text-sm text-amber-100 leading-relaxed font-semibold">
+                {lang === 'sv' ? species.funFactSv : species.funFactEn}
+              </p>
+            </div>
+          </div>
+
           {/* Summary */}
           <p className="text-sm sm:text-base text-slate-200 leading-relaxed">
             {lang === 'sv' ? species.summarySv : species.summaryEn}
           </p>
 
-          {/* Kid-Friendly Fun Fact Box */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-400/35 flex items-start gap-3.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Sparkles className="w-5 h-5" />
+          {/* Great Tankmates & Incompatible Species with Visual Photo Chips */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-300">
+                {lang === 'sv' ? '💚 Bästa kompisar i akvariet:' : '💚 Best Friends in the Tank:'}
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {species.greatTankmatesIds.map((mateId) => {
+                  const mate = FISH_SPECIES.find((s) => s.id === mateId);
+                  if (!mate) return null;
+                  const mateMeta = getKidMeta(mate.id);
+                  return (
+                    <button
+                      key={mate.id}
+                      onClick={() => {
+                        playBubbleSound();
+                        onSelectOtherSpecies(mate);
+                      }}
+                      className="pl-1.5 pr-3 py-1 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-100 border border-emerald-500/35 text-xs font-bold transition flex items-center gap-2 cursor-pointer"
+                    >
+                      <img
+                        src={mateMeta.photoUrl}
+                        alt={mate.nameSv}
+                        className="w-6 h-6 rounded-lg object-cover border border-emerald-400/40"
+                      />
+                      <span>{lang === 'sv' ? mate.nameSv : mate.nameEn}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-1">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-amber-300">
-                {lang === 'sv' ? 'Visste du att?' : 'Fun Fact!'}
-              </span>
-              <p className="text-xs sm:text-sm text-amber-100 leading-relaxed font-medium">
-                {lang === 'sv' ? species.funFactSv : species.funFactEn}
-              </p>
-            </div>
+
+            {species.incompatibleWithIds.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-rose-300 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{lang === 'sv' ? '⛔ Passar inte ihop med:' : '⛔ Avoid Mixing With:'}</span>
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {species.incompatibleWithIds.map((badId) => {
+                    const bad = FISH_SPECIES.find((s) => s.id === badId);
+                    if (!bad) return null;
+                    const badMeta = getKidMeta(bad.id);
+                    return (
+                      <button
+                        key={bad.id}
+                        onClick={() => {
+                          playBubbleSound();
+                          onSelectOtherSpecies(bad);
+                        }}
+                        className="pl-1.5 pr-3 py-1 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-100 border border-rose-500/35 text-xs font-bold transition flex items-center gap-2 cursor-pointer"
+                      >
+                        <img
+                          src={badMeta.photoUrl}
+                          alt={bad.nameSv}
+                          className="w-6 h-6 rounded-lg object-cover border border-rose-400/40"
+                        />
+                        <span>{lang === 'sv' ? bad.nameSv : bad.nameEn}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Quick Spec Grid */}
@@ -158,7 +281,7 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
             <div className="p-3 rounded-2xl bg-abyss-950/80 border border-slate-800 space-y-1">
               <span className="text-[11px] text-slate-400 font-bold flex items-center gap-1">
                 <Users className="w-3.5 h-3.5 text-amber-400" />
-                {lang === 'sv' ? 'Trivs bäst i grupp' : 'Social Group'}
+                {lang === 'sv' ? 'Hur många kompisar?' : 'Social Group'}
               </span>
               <div className="text-sm font-black text-white">
                 {species.solitaryOrPairOnly
@@ -199,7 +322,7 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-abyss-950/60 border border-slate-800/80 space-y-1">
               <span className="font-bold text-cyan-300 flex items-center gap-1.5">
                 <Compass className="w-3.5 h-3.5" />
-                {lang === 'sv' ? 'Ursprung i naturen' : 'Natural Habitat'}
+                {lang === 'sv' ? 'Var bor den i naturen?' : 'Natural Habitat'}
               </span>
               <p className="text-slate-300">{lang === 'sv' ? species.originSv : species.originEn}</p>
             </div>
@@ -216,7 +339,7 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
           <div className="space-y-2">
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-cyan-400" />
-              <span>{lang === 'sv' ? 'Viktiga skötselråd' : 'Essential Care Tips'}</span>
+              <span>{lang === 'sv' ? 'Viktiga skötselråd för föräldrar & barn' : 'Essential Care Tips'}</span>
             </h3>
             <ul className="space-y-1.5">
               {(lang === 'sv' ? species.careTipsSv : species.careTipsEn).map((tip, idx) => (
@@ -230,67 +353,13 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
               ))}
             </ul>
           </div>
-
-          {/* Great Tankmates & Incompatible Species */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-300">
-                {lang === 'sv' ? 'Passar utmärkt ihop med:' : 'Great Tankmates:'}
-              </h4>
-              <div className="flex flex-wrap gap-1.5">
-                {species.greatTankmatesIds.map((mateId) => {
-                  const mate = FISH_SPECIES.find((s) => s.id === mateId);
-                  if (!mate) return null;
-                  return (
-                    <button
-                      key={mate.id}
-                      onClick={() => {
-                        playBubbleSound();
-                        onSelectOtherSpecies(mate);
-                      }}
-                      className="px-2.5 py-1 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 border border-emerald-500/30 text-xs font-bold transition cursor-pointer"
-                    >
-                      {lang === 'sv' ? mate.nameSv : mate.nameEn}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {species.incompatibleWithIds.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-extrabold uppercase tracking-wider text-rose-300 flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>{lang === 'sv' ? 'Undvik att blanda med:' : 'Avoid Mixing With:'}</span>
-                </h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {species.incompatibleWithIds.map((badId) => {
-                    const bad = FISH_SPECIES.find((s) => s.id === badId);
-                    if (!bad) return null;
-                    return (
-                      <button
-                        key={bad.id}
-                        onClick={() => {
-                          playBubbleSound();
-                          onSelectOtherSpecies(bad);
-                        }}
-                        className="px-2.5 py-1 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 border border-rose-500/30 text-xs font-bold transition cursor-pointer"
-                      >
-                        {lang === 'sv' ? bad.nameSv : bad.nameEn}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Bottom Action Footer: Add / Adjust in Tank */}
         <div className="px-6 py-4 bg-abyss-950 border-t border-cyan-500/20 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400">
-              {lang === 'sv' ? 'Antal i ert akvarium:' : 'Count in your tank:'}
+            <span className="text-xs font-bold text-slate-300">
+              {lang === 'sv' ? 'I ert akvarium:' : 'In your tank:'}
             </span>
             <div className="flex items-center gap-2 bg-abyss-900 border border-slate-700 rounded-xl p-1">
               <button
@@ -299,11 +368,11 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
                   onChangeCount(species.id, Math.max(0, currentCount - 1));
                 }}
                 disabled={currentCount === 0}
-                className="w-8 h-8 rounded-lg bg-abyss-800 hover:bg-abyss-700 disabled:opacity-30 text-white flex items-center justify-center cursor-pointer"
+                className="w-9 h-9 rounded-lg bg-abyss-800 hover:bg-abyss-700 disabled:opacity-30 text-white flex items-center justify-center cursor-pointer"
               >
                 <Minus className="w-4 h-4" />
               </button>
-              <span className="w-8 text-center font-mono font-black text-base text-cyan-300">
+              <span className="w-9 text-center font-mono font-black text-lg text-cyan-300">
                 {currentCount}
               </span>
               <button
@@ -311,7 +380,7 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
                   playBubbleSound();
                   onChangeCount(species.id, currentCount + 1);
                 }}
-                className="w-8 h-8 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center font-bold cursor-pointer"
+                className="w-9 h-9 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-slate-950 flex items-center justify-center font-bold cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
               </button>
@@ -322,13 +391,13 @@ export const SpeciesDetailModal: React.FC<SpeciesDetailModalProps> = ({
             {currentCount === 0 && (
               <button
                 onClick={handleQuickAddSchool}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>
                   {lang === 'sv'
-                    ? `Lägg i rekommenderat antal (${species.recommendedGroupSize} st)`
-                    : `Add recommended group (${species.recommendedGroupSize})`}
+                    ? `Plums i akvariet! (${species.recommendedGroupSize} st)`
+                    : `Splash into tank! (${species.recommendedGroupSize})`}
                 </span>
               </button>
             )}
