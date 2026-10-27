@@ -8,6 +8,7 @@ import {
 import { FISH_SPECIES } from '../data/species';
 import { getKidMeta } from '../data/kidExtras';
 import { FishIllustration } from './FishIllustration';
+import { StickerDiplomaModal } from './StickerDiplomaModal';
 import {
   playBubbleSound,
   playFeedSplashSound,
@@ -17,6 +18,7 @@ import {
 } from '../utils/audio';
 import confetti from 'canvas-confetti';
 import {
+  Award,
   Sparkles,
   Sun,
   Moon,
@@ -101,7 +103,7 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
   const [simFish, setSimFish] = useState<SimFish[]>([]);
   const [treasureOpen, setTreasureOpen] = useState(false);
 
-  // Kids "Fisk-Jakten" Mini-Game State
+  // Kids "Fisk-Jakten" Mini-Game & Sticker Album / Diploma State
   const [questActive, setQuestActive] = useState(false);
   const [questTarget, setQuestTarget] = useState<FishSpecies | null>(null);
   const [questSolved, setQuestSolved] = useState(false);
@@ -112,6 +114,41 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
       return 0;
     }
   });
+  const [unlockedStickers, setUnlockedStickers] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('fena_kids_stickers');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+  const [albumModalOpen, setAlbumModalOpen] = useState(false);
+  const [albumInitialTab, setAlbumInitialTab] = useState<'stickers' | 'diploma'>('stickers');
+
+  const unlockSticker = (speciesId: string) => {
+    setUnlockedStickers((prev) => {
+      if (prev.includes(speciesId)) return prev;
+      const next = [...prev, speciesId];
+      try {
+        localStorage.setItem('fena_kids_stickers', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Automatically unlock stickers for species present in the tank
+  useEffect(() => {
+    const activeIds = fishEntries.filter((e) => e.count > 0).map((e) => e.speciesId);
+    if (activeIds.length === 0) return;
+    setUnlockedStickers((prev) => {
+      const missing = activeIds.filter((id) => !prev.includes(id));
+      if (missing.length === 0) return prev;
+      const next = [...prev, ...missing];
+      try {
+        localStorage.setItem('fena_kids_stickers', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, [fishEntries]);
 
   const tankRef = useRef<HTMLDivElement>(null);
 
@@ -401,6 +438,7 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
       if (f.species.id === questTarget.id) {
         playSuccessChime();
         setQuestSolved(true);
+        unlockSticker(f.species.id);
         const nextStars = starsEarned + 1;
         setStarsEarned(nextStars);
         try {
@@ -415,8 +453,12 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
         } catch {}
         speakKidsText(
           lang === 'sv'
-            ? `Hurra! Rätt gissat! Du hittade ${f.species.nameSv}!`
-            : `Hooray! You found the ${f.species.nameEn}!`,
+            ? nextStars === 3
+              ? `Hurra! Rätt gissat! Du hittade ${f.species.nameSv} och låste upp ditt eget Akvarium-Diplom!`
+              : `Hurra! Rätt gissat! Du hittade ${f.species.nameSv} och fick ett nytt klistermärke!`
+            : nextStars === 3
+            ? `Hooray! You found the ${f.species.nameEn} and unlocked your Aquarium Diploma!`
+            : `Hooray! You found the ${f.species.nameEn} and earned a new sticker!`,
           lang
         );
         return;
@@ -532,6 +574,39 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
             )}
           </button>
 
+          {/* Kids Sticker Album & Printable Diploma Button */}
+          <button
+            onClick={() => {
+              playBubbleSound();
+              setAlbumInitialTab(starsEarned >= 3 ? 'diploma' : 'stickers');
+              setAlbumModalOpen(true);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black border transition flex items-center gap-1.5 cursor-pointer ${
+              starsEarned >= 3
+                ? 'bg-gradient-to-r from-amber-400/25 to-emerald-500/25 border-amber-300 text-amber-200 hover:brightness-110 shadow-md shadow-amber-500/10'
+                : 'bg-abyss-900 border-cyan-400/40 text-cyan-200 hover:border-cyan-300'
+            }`}
+            title={
+              lang === 'sv'
+                ? 'Öppna Klistermärkes-Album & Akvarium-Diplom'
+                : 'Open Sticker Album & Aquarium Diploma'
+            }
+          >
+            <Award className="w-3.5 h-3.5 text-amber-300" />
+            <span>
+              {starsEarned >= 3
+                ? lang === 'sv'
+                  ? '🎓 Mitt Diplom!'
+                  : '🎓 My Diploma!'
+                : lang === 'sv'
+                ? '📒 Klistermärken'
+                : '📒 Stickers'}
+            </span>
+            <span className="px-1.5 py-0.5 rounded-full bg-black/40 text-cyan-200 text-[10px] font-black">
+              {unlockedStickers.length}/{FISH_SPECIES.length}
+            </span>
+          </button>
+
           {/* Toggle Real Photos vs Illustrated Fish */}
           <button
             onClick={() => {
@@ -635,6 +710,20 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {starsEarned >= 3 && (
+              <button
+                onClick={() => {
+                  playSuccessChime();
+                  setAlbumInitialTab('diploma');
+                  setAlbumModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:brightness-110 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>{lang === 'sv' ? '🎓 Visa Diplom!' : '🎓 View Diploma!'}</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 const meta = getKidMeta(questTarget.id);
@@ -928,6 +1017,26 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
           </span>
         </span>
       </div>
+
+      {/* Kids Sticker Album & Printable Diploma Modal */}
+      <StickerDiplomaModal
+        isOpen={albumModalOpen}
+        onClose={() => setAlbumModalOpen(false)}
+        starsEarned={starsEarned}
+        unlockedStickers={unlockedStickers}
+        onUnlockSticker={unlockSticker}
+        onAddBonusStar={() => {
+          const next = starsEarned + 1;
+          setStarsEarned(next);
+          try {
+            localStorage.setItem('fena_kids_stars', String(next));
+          } catch {}
+        }}
+        onInspectSpecies={onInspectSpecies}
+        liters={liters}
+        lang={lang}
+        initialTab={albumInitialTab}
+      />
     </div>
   );
 };

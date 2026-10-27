@@ -23,3 +23,23 @@ body {
   background-color: #040d1a;
   color: #f1f5f9;
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #fena-printable-diploma,
+  #fena-printable-diploma * {
+    visibility: visible;
+  }
+  #fena-printable-diploma {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 2rem;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+}
