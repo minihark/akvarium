@@ -66,9 +66,12 @@ export const StickerDiplomaModal: React.FC<StickerDiplomaModalProps> = ({
 
   if (!isOpen) return null;
 
+  const unlockedSpeciesObjects = FISH_SPECIES.filter((s) =>
+    unlockedStickers.includes(s.id)
+  );
   const diplomaUnlocked = starsEarned >= 3;
   const totalSpecies = FISH_SPECIES.length;
-  const unlockedCount = unlockedStickers.length;
+  const unlockedCount = unlockedSpeciesObjects.length;
   const progressPct = Math.round((unlockedCount / totalSpecies) * 100);
 
   const handleKidNameChange = (val: string) => {
@@ -138,10 +141,6 @@ export const StickerDiplomaModal: React.FC<StickerDiplomaModalProps> = ({
     playSuccessChime();
     window.print();
   };
-
-  const unlockedSpeciesObjects = FISH_SPECIES.filter((s) =>
-    unlockedStickers.includes(s.id)
-  );
 
   return (
     <div
@@ -607,7 +606,7 @@ export const StickerDiplomaModal: React.FC<StickerDiplomaModalProps> = ({
                   {/* Footer Signature & Date */}
                   <div className="pt-6 mt-4 border-t border-cyan-500/25 print:border-slate-300 flex items-center justify-between text-xs text-slate-300 print:text-slate-600 font-bold">
                     <div>
-                      📅 {new Date().toISOString().slice(0, 10)}
+                      📅 {new Date().toLocaleDateString('sv-SE')}
                     </div>
                     <div className="flex items-center gap-1.5 text-amber-300 print:text-amber-700 font-black">
                       <span>🦭 Kapten Fena • akvarium.apps.harkco.se</span>
