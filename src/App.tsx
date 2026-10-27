@@ -5,48 +5,40 @@ import {
   TankFishEntry,
   AquascapeTheme,
   SavedTankPlan,
-  FishCategory,
-  WaterZone,
 } from './types';
 import { FISH_SPECIES, STARTER_PRESETS, EQUIPMENT_CHECKLIST } from './data/species';
 import { getKidMeta } from './data/kidExtras';
 import { analyzeTank } from './utils/compatibility';
 import { InteractiveAquarium } from './components/InteractiveAquarium';
-import { FishIllustration } from './components/FishIllustration';
 import { SpeciesDetailModal } from './components/SpeciesDetailModal';
 import { playBubbleSound, playFeedSplashSound, speakKidsText } from './utils/audio';
 import confetti from 'canvas-confetti';
 import {
   Fish,
   Search,
-  Sparkles,
   Plus,
   Minus,
-  Trash2,
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  Info,
-  Droplets,
-  Thermometer,
-  Layers,
   ShoppingBag,
   Bookmark,
   RotateCcw,
-  Globe,
   Check,
-  BookOpen,
   Volume2,
+  ChevronDown,
 } from 'lucide-react';
 
 const STORAGE_KEY_TANK = 'fena_active_tank_v1';
 
+type SimpleGroupFilter = 'all' | 'schooling' | 'centerpiece' | 'bottom';
+
 export function App() {
   const [lang, setLang] = useState<Language>('sv');
-  const [activeTab, setActiveTab] = useState<'explore' | 'planner' | 'checklist'>('explore');
+  const [activeView, setActiveView] = useState<'explore' | 'checklist'>('explore');
+  const [showHealthDetails, setShowHealthDetails] = useState(false);
 
-  // Tank configuration state (initialized with Classic 60L starter preset so it's alive right away!)
-  const [tankName, setTankName] = useState<string>('Vårt Första Akvarium');
+  const [tankName, setTankName] = useState<string>('Vårt Akvarium');
   const [tankLiters, setTankLiters] = useState<number>(60);
   const [aquascape, setAquascape] = useState<AquascapeTheme>('nature_planted');
   const [fishEntries, setFishEntries] = useState<TankFishEntry[]>(() => {
@@ -71,7 +63,6 @@ export function App() {
     return ['tank-and-lid', 'filter', 'heater-thermometer'];
   });
 
-  // Load liters & theme from localStorage on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_TANK);
@@ -84,7 +75,6 @@ export function App() {
     } catch {}
   }, []);
 
-  // Persist current tank to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -100,18 +90,11 @@ export function App() {
     } catch {}
   }, [tankName, tankLiters, aquascape, fishEntries, checkedEquipment]);
 
-  // Species explorer filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<FishCategory | 'all'>('all');
-  const [selectedZone, setSelectedZone] = useState<WaterZone | 'all'>('all');
-  const [onlyCompatibleWithTankSize, setOnlyCompatibleWithTankSize] = useState(false);
-
-  // Selected species for detail modal
+  const [groupFilter, setGroupFilter] = useState<SimpleGroupFilter>('all');
   const [inspectedSpecies, setInspectedSpecies] = useState<FishSpecies | null>(null);
-
-  // Saved family tanks from SQLite server
   const [savedTanks, setSavedTanks] = useState<SavedTankPlan[]>([]);
-  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [copiedChecklist, setCopiedChecklist] = useState(false);
 
   useEffect(() => {
     fetch('/api/tanks')
@@ -122,18 +105,15 @@ export function App() {
       .catch(() => {});
   }, []);
 
-  // Analyze tank compatibility & bioload
   const analysis = useMemo(
     () => analyzeTank(tankLiters, fishEntries),
     [tankLiters, fishEntries]
   );
 
-  // Helper to get count of a species in current tank
   const getCountForSpecies = (speciesId: string): number => {
     return fishEntries.find((e) => e.speciesId === speciesId)?.count || 0;
   };
 
-  // Update count of a species
   const handleSetSpeciesCount = (speciesId: string, nextCount: number) => {
     const clamped = Math.max(0, Math.min(50, nextCount));
     setFishEntries((prev) => {
@@ -147,7 +127,6 @@ export function App() {
     });
   };
 
-  // Add recommended group size (or +1 if already in tank)
   const handleQuickAddSpecies = (sp: FishSpecies) => {
     playBubbleSound();
     const curr = getCountForSpecies(sp.id);
@@ -158,7 +137,6 @@ export function App() {
     }
   };
 
-  // Load a starter preset
   const handleApplyPreset = (presetId: string) => {
     const preset = STARTER_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
@@ -169,7 +147,6 @@ export function App() {
     setFishEntries(preset.fish.map((f) => ({ ...f })));
   };
 
-  // Save current tank to SQLite server
   const handleSaveTankToCloud = async () => {
     playFeedSplashSound();
     const id = `tank-${tankName.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'familjen'}`;
@@ -200,61 +177,45 @@ export function App() {
     } catch {}
 
     try {
-      confetti({
-        particleCount: 55,
-        spread: 70,
-        origin: { y: 0.7 },
-      });
+      confetti({ particleCount: 45, spread: 65, origin: { y: 0.7 } });
     } catch {}
-
-    setSaveSuccessMessage(
-      lang === 'sv' ? 'Akvariet sparat!' : 'Aquarium plan saved!'
-    );
-    setTimeout(() => setSaveSuccessMessage(null), 3000);
   };
 
-  // Filtered species list
   const filteredSpecies = useMemo(() => {
     return FISH_SPECIES.filter((sp) => {
-      if (selectedCategory !== 'all' && sp.category !== selectedCategory) {
+      if (groupFilter === 'schooling' && sp.category !== 'tetras_schooling') {
         return false;
       }
-      if (selectedZone !== 'all' && sp.zone !== selectedZone && sp.zone !== 'all') {
+      if (
+        groupFilter === 'centerpiece' &&
+        sp.category !== 'centerpiece' &&
+        sp.category !== 'livebearers' &&
+        sp.category !== 'cichlids_special'
+      ) {
         return false;
       }
-      if (onlyCompatibleWithTankSize && sp.minTankLiters > tankLiters) {
+      if (
+        groupFilter === 'bottom' &&
+        sp.category !== 'bottom_algae' &&
+        sp.category !== 'shrimp_snails'
+      ) {
         return false;
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const match =
+        return (
           sp.nameSv.toLowerCase().includes(q) ||
           sp.nameEn.toLowerCase().includes(q) ||
-          sp.scientificName.toLowerCase().includes(q) ||
-          sp.summarySv.toLowerCase().includes(q) ||
-          sp.summaryEn.toLowerCase().includes(q);
-        if (!match) return false;
+          sp.scientificName.toLowerCase().includes(q)
+        );
       }
       return true;
     });
-  }, [selectedCategory, selectedZone, onlyCompatibleWithTankSize, tankLiters, searchQuery]);
-
-  const categories: { id: FishCategory | 'all'; labelSv: string; labelEn: string }[] = [
-    { id: 'all', labelSv: '🐠 Alla arter (21)', labelEn: '🐠 All Species (21)' },
-    { id: 'tetras_schooling', labelSv: '⚡ Stimfiskar & Tetror', labelEn: '⚡ Schooling & Tetras' },
-    { id: 'livebearers', labelSv: '🌈 Guppy, Platy & Svärd', labelEn: '🌈 Livebearers (Guppy/Platy)' },
-    { id: 'centerpiece', labelSv: '👑 Kampfisk & Gurami', labelEn: '👑 Centerpiece (Betta/Gourami)' },
-    { id: 'cichlids_special', labelSv: '⛵ Ciklider & Skalar', labelEn: '⛵ Cichlids & Angelfish' },
-    { id: 'bottom_algae', labelSv: '🧹 Botten & Alg-städare', labelEn: '🧹 Bottom & Algae Crew' },
-    { id: 'shrimp_snails', labelSv: '🍒 Räkor & Snäckor', labelEn: '🍒 Shrimp & Snails' },
-  ];
-
-  const tankSizes = [30, 45, 54, 60, 80, 110, 180, 240];
+  }, [groupFilter, searchQuery]);
 
   const hasConflictWithCurrentTank = (candidate: FishSpecies): string | null => {
     for (const entry of fishEntries) {
-      if (entry.count <= 0) continue;
-      if (entry.speciesId === candidate.id) continue;
+      if (entry.count <= 0 || entry.speciesId === candidate.id) continue;
       const existing = FISH_SPECIES.find((s) => s.id === entry.speciesId);
       if (!existing) continue;
       if (
@@ -267,100 +228,135 @@ export function App() {
     return null;
   };
 
+  const copyShoppingList = () => {
+    const fishLines = fishEntries
+      .map((e) => {
+        const sp = FISH_SPECIES.find((s) => s.id === e.speciesId);
+        return sp ? `- ${e.count} st ${sp.nameSv} (${sp.scientificName})` : null;
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    const equipLines = EQUIPMENT_CHECKLIST.map((item) => {
+      const done = checkedEquipment.includes(item.id);
+      return `${done ? '[x]' : '[ ]'} ${item.nameSv}`;
+    }).join('\n');
+
+    const text = `INKÖPSLISTA — ${tankName} (${tankLiters} Liter)\n\nFISKAR:\n${
+      fishLines || '(Inga valda ännu)'
+    }\n\nUTRUSTNING:\n${equipLines}`;
+
+    navigator.clipboard?.writeText(text);
+    setCopiedChecklist(true);
+    setTimeout(() => setCopiedChecklist(false), 2500);
+  };
+
+  const tankSizes = [30, 45, 54, 60, 80, 110, 180, 240];
+  const hasErrors = analysis.alerts.some((a) => a.severity === 'error');
+  const hasWarnings = analysis.alerts.some((a) => a.severity === 'warning');
+
   return (
-    <div className="min-h-screen flex flex-col bg-abyss-950 text-slate-100">
-      {/* TOP NAVBAR */}
-      <header className="sticky top-0 z-30 bg-abyss-950/90 backdrop-blur-md border-b border-cyan-500/20">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+    <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-[#12262A]">
+      {/* CLEAN, CALM EDITORIAL HEADER */}
+      <header className="sticky top-0 z-30 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-[#E6E0D5]">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
           {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-400 to-teal-500 text-slate-950 flex items-center justify-center shadow-lg shadow-cyan-500/25">
-              <Fish className="w-6 h-6" />
+            <div className="w-10 h-10 rounded-2xl bg-[#0D9488] text-white flex items-center justify-center shadow-sm">
+              <Fish className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg sm:text-xl font-black tracking-tight text-white">
-                  Fena
-                </span>
-                <span className="text-[10px] font-mono uppercase font-extrabold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                  {lang === 'sv' ? 'Akvariebyggaren' : 'Aquarium Explorer'}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 hidden sm:block">
-                {lang === 'sv'
-                  ? 'Utforska akvariefiskar, testa vilka som trivs ihop och se dem simma direkt'
-                  : 'Explore freshwater species, test compatibility & watch them swim'}
+              <h1 className="text-xl sm:text-2xl font-display font-bold tracking-tight text-[#12262A] leading-none">
+                Fena
+              </h1>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                {lang === 'sv' ? 'Upptäck fiskar & bygg ert akvarium' : 'Aquarium Explorer'}
               </p>
             </div>
           </div>
 
-          {/* Navigation Tabs */}
-          <div className="flex items-center gap-1.5 bg-abyss-900 p-1 rounded-2xl border border-slate-800">
-            <button
-              onClick={() => {
-                playBubbleSound();
-                setActiveTab('explore');
-              }}
-              className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'explore'
-                  ? 'bg-cyan-400 text-slate-950 shadow-md'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <Fish className="w-3.5 h-3.5" />
-              <span>{lang === 'sv' ? 'Utforska Fiskar' : 'Explore Fish'}</span>
-            </button>
+          {/* Right Controls: Tank Size Select, Starter Select, and View Switcher */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Tank Size Select */}
+            <div className="relative">
+              <select
+                value={tankLiters}
+                onChange={(e) => {
+                  playBubbleSound();
+                  setTankLiters(Number(e.target.value));
+                }}
+                aria-label="Tank size"
+                className="appearance-none pl-3.5 pr-8 py-2 rounded-full bg-white border border-[#E6E0D5] text-xs font-extrabold text-[#12262A] cursor-pointer hover:border-teal-600/40 focus:outline-none shadow-2xs"
+              >
+                {tankSizes.map((s) => (
+                  <option key={s} value={s}>
+                    {lang === 'sv' ? `Akvarium: ${s} L` : `Tank: ${s} L`}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Starter Preset Select */}
+            <div className="relative">
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) handleApplyPreset(e.target.value);
+                }}
+                aria-label="Starter presets"
+                className="appearance-none pl-3.5 pr-8 py-2 rounded-full bg-white border border-[#E6E0D5] text-xs font-bold text-slate-700 cursor-pointer hover:border-teal-600/40 focus:outline-none shadow-2xs"
+              >
+                <option value="" disabled>
+                  {lang === 'sv' ? 'Färdiga förslag…' : 'Starter tanks…'}
+                </option>
+                {STARTER_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {lang === 'sv' ? `${p.nameSv} (${p.liters}L)` : `${p.nameEn} (${p.liters}L)`}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* 2-Tab Switcher: Fiskar vs Inköpslista */}
+            <div className="flex items-center bg-[#EFECE6] p-1 rounded-full">
+              <button
+                onClick={() => setActiveView('explore')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition cursor-pointer ${
+                  activeView === 'explore'
+                    ? 'bg-white text-[#12262A] shadow-xs'
+                    : 'text-slate-600 hover:text-[#12262A]'
+                }`}
+              >
+                {lang === 'sv' ? 'Fiskar' : 'Fish'}
+              </button>
+              <button
+                onClick={() => setActiveView('checklist')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition flex items-center gap-1 cursor-pointer ${
+                  activeView === 'checklist'
+                    ? 'bg-white text-[#12262A] shadow-xs'
+                    : 'text-slate-600 hover:text-[#12262A]'
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>{lang === 'sv' ? 'Inköpslista' : 'Checklist'}</span>
+              </button>
+            </div>
 
             <button
-              onClick={() => {
-                playBubbleSound();
-                setActiveTab('planner');
-              }}
-              className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'planner'
-                  ? 'bg-cyan-400 text-slate-950 shadow-md'
-                  : 'text-slate-300 hover:text-white'
-              }`}
+              onClick={() => setLang(lang === 'sv' ? 'en' : 'sv')}
+              className="px-2.5 py-1.5 rounded-full text-xs font-bold text-slate-500 hover:text-[#12262A] cursor-pointer"
             >
-              <Layers className="w-3.5 h-3.5" />
-              <span>
-                {lang === 'sv' ? 'Akvarie-Kollen' : 'Tank Check'} ({analysis.totalFishCount})
-              </span>
-              {analysis.alerts.some((a) => a.severity === 'error') && (
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                playBubbleSound();
-                setActiveTab('checklist');
-              }}
-              className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'checklist'
-                  ? 'bg-cyan-400 text-slate-950 shadow-md'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>{lang === 'sv' ? 'Inköpslista & Guide' : 'Shopping List'}</span>
+              {lang === 'sv' ? 'EN' : 'SV'}
             </button>
           </div>
-
-          {/* Language Toggle */}
-          <button
-            onClick={() => setLang(lang === 'sv' ? 'en' : 'sv')}
-            className="px-3 py-1.5 rounded-xl bg-abyss-900 border border-slate-800 hover:border-cyan-500/40 text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 cursor-pointer"
-          >
-            <Globe className="w-3.5 h-3.5 text-cyan-400" />
-            <span>{lang === 'sv' ? 'SV / EN' : 'EN / SV'}</span>
-          </button>
         </div>
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-5 space-y-6">
-        {/* LIVE AQUARIUM SIMULATOR + QUICK TANK BAR */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-8">
+        {/* 1. LIVE INTERACTIVE AQUARIUM */}
         <section className="space-y-3">
           <InteractiveAquarium
             liters={tankLiters}
@@ -371,248 +367,183 @@ export function App() {
             lang={lang}
           />
 
-          {/* Quick Tank Size, Starter Presets & Status Strip */}
-          <div className="bg-abyss-900/90 border border-cyan-500/20 rounded-2xl p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            {/* Tank Size Selector */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-extrabold text-cyan-300 uppercase tracking-wider mr-1">
-                {lang === 'sv' ? 'Akvariestorlek:' : 'Tank Size:'}
-              </span>
-              {tankSizes.map((size) => (
-                <button
-                  key={size}
-                  onClick={() => {
-                    playBubbleSound();
-                    setTankLiters(size);
-                  }}
-                  className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold transition cursor-pointer ${
-                    tankLiters === size
-                      ? 'bg-cyan-400 text-slate-950 font-black shadow-sm'
-                      : 'bg-abyss-950 border border-slate-800 text-slate-300 hover:text-white'
-                  }`}
-                >
-                  {size}L
-                </button>
-              ))}
-            </div>
-
-            {/* Starter Presets */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-extrabold text-amber-300 uppercase tracking-wider mr-1 flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" />
-                {lang === 'sv' ? 'Färdiga förslag:' : 'Starter Tanks:'}
-              </span>
-              {STARTER_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  onClick={() => handleApplyPreset(preset.id)}
-                  className="px-3 py-1 rounded-xl bg-abyss-950 hover:bg-abyss-800 border border-amber-500/30 hover:border-amber-400 text-amber-200 text-xs font-bold transition cursor-pointer"
-                >
-                  {lang === 'sv' ? preset.nameSv : preset.nameEn}
-                </button>
-              ))}
-              {fishEntries.length > 0 && (
-                <button
-                  onClick={() => {
-                    playBubbleSound();
-                    setFishEntries([]);
-                  }}
-                  className="px-2.5 py-1 rounded-xl bg-abyss-950 hover:bg-rose-500/20 border border-slate-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                  title={lang === 'sv' ? 'Töm akvariet och börja från noll' : 'Empty tank'}
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>{lang === 'sv' ? 'Töm' : 'Clear'}</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Current Fish Pill Bar + Instant Compatibility Summary */}
+          {/* Calm Single-Row Active Fish & Compatibility Strip */}
           {fishEntries.length > 0 && (
-            <div className="bg-abyss-900/70 border border-slate-800 rounded-2xl p-3 sm:px-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-400">
-                  {lang === 'sv' ? 'I akvariet just nu:' : 'Currently in tank:'}
-                </span>
-                {fishEntries.map((entry) => {
-                  const sp = FISH_SPECIES.find((s) => s.id === entry.speciesId);
-                  if (!sp) return null;
-                  const meta = getKidMeta(sp.id);
-                  return (
-                    <div
-                      key={sp.id}
-                      className="inline-flex items-center gap-1.5 pl-1.5 pr-1.5 py-1 rounded-xl bg-abyss-950 border border-cyan-500/30 text-xs"
-                    >
-                      <img
-                        src={meta.photoUrl}
-                        alt={sp.nameSv}
-                        onClick={() => setInspectedSpecies(sp)}
-                        className="w-6 h-6 rounded-lg object-cover border border-cyan-400/40 cursor-pointer"
-                      />
-                      <button
-                        onClick={() => setInspectedSpecies(sp)}
-                        className="font-bold text-white hover:text-cyan-300 cursor-pointer"
+            <div className="bg-white border border-[#E6E0D5] rounded-2xl p-3 sm:px-4 shadow-2xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Fish Avatars in Tank */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {fishEntries.map((entry) => {
+                    const sp = FISH_SPECIES.find((s) => s.id === entry.speciesId);
+                    if (!sp) return null;
+                    const meta = getKidMeta(sp.id);
+                    return (
+                      <div
+                        key={sp.id}
+                        className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-full bg-[#FAF7F2] border border-[#E6E0D5] text-xs"
                       >
-                        {entry.count}× {lang === 'sv' ? sp.nameSv : sp.nameEn}
-                      </button>
-                      <button
-                        onClick={() => handleSetSpeciesCount(sp.id, entry.count - 1)}
-                        className="w-5 h-5 rounded-md bg-abyss-800 hover:bg-abyss-700 text-slate-300 flex items-center justify-center cursor-pointer"
-                      >
-                        -
-                      </button>
-                      <button
-                        onClick={() => handleSetSpeciesCount(sp.id, entry.count + 1)}
-                        className="w-5 h-5 rounded-md bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 flex items-center justify-center cursor-pointer"
-                      >
-                        +
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                        <img
+                          src={meta.photoUrl}
+                          alt={sp.nameSv}
+                          onClick={() => setInspectedSpecies(sp)}
+                          className="w-6 h-6 rounded-full object-cover cursor-pointer"
+                        />
+                        <button
+                          onClick={() => setInspectedSpecies(sp)}
+                          className="font-bold text-[#12262A] hover:text-teal-700 cursor-pointer"
+                        >
+                          {entry.count}× {lang === 'sv' ? sp.nameSv : sp.nameEn}
+                        </button>
+                        <button
+                          onClick={() => handleSetSpeciesCount(sp.id, entry.count - 1)}
+                          className="w-5 h-5 rounded-full bg-white hover:bg-slate-100 border border-[#E6E0D5] text-slate-600 flex items-center justify-center cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <button
+                          onClick={() => handleSetSpeciesCount(sp.id, entry.count + 1)}
+                          className="w-5 h-5 rounded-full bg-white hover:bg-teal-50 border border-[#E6E0D5] text-teal-700 flex items-center justify-center cursor-pointer"
+                        >
+                          +
+                        </button>
+                      </div>
+                    );
+                  })}
 
-              {/* Quick Health Badge */}
-              <div className="flex items-center gap-3">
-                <div className="text-xs font-mono">
-                  <span className="text-slate-400">
-                    {lang === 'sv' ? 'Belastning: ' : 'Bioload: '}
-                  </span>
-                  <span
-                    className={`font-black ${
-                      analysis.bioloadPercent > 105
-                        ? 'text-rose-400'
-                        : analysis.bioloadPercent > 85
-                        ? 'text-amber-300'
-                        : 'text-emerald-400'
-                    }`}
+                  <button
+                    onClick={() => {
+                      playBubbleSound();
+                      setFishEntries([]);
+                    }}
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold text-slate-400 hover:text-rose-600 flex items-center gap-1 cursor-pointer transition"
                   >
-                    {analysis.bioloadPercent}%
-                  </span>
+                    <RotateCcw className="w-3 h-3" />
+                    <span>{lang === 'sv' ? 'Töm' : 'Clear'}</span>
+                  </button>
                 </div>
 
-                {analysis.alerts.some((a) => a.severity === 'error') ? (
-                  <button
-                    onClick={() => setActiveTab('planner')}
-                    className="px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                    <span>
-                      {lang === 'sv' ? 'Krock upptäckt — visa detaljer' : 'Conflict found — view'}
-                    </span>
-                  </button>
-                ) : analysis.alerts.some((a) => a.severity === 'warning') ? (
-                  <button
-                    onClick={() => setActiveTab('planner')}
-                    className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                    <span>
-                      {lang === 'sv' ? 'Stim-tips finns' : 'Group size tip'}
-                    </span>
-                  </button>
-                ) : (
-                  <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{lang === 'sv' ? 'Alla fiskar trivs ihop!' : 'All fish compatible!'}</span>
-                  </span>
-                )}
+                {/* Single Compatibility Pill (Click to expand details if needed) */}
+                <button
+                  onClick={() => setShowHealthDetails(!showHealthDetails)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition ${
+                    hasErrors
+                      ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                      : hasWarnings
+                      ? 'bg-amber-50 text-amber-900 border border-amber-200'
+                      : 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                  }`}
+                >
+                  {hasErrors ? (
+                    <>
+                      <XCircle className="w-4 h-4 text-rose-600" />
+                      <span>
+                        {lang === 'sv' ? 'Fiskar krockar — visa varför' : 'Conflict — view'}
+                      </span>
+                    </>
+                  ) : hasWarnings ? (
+                    <>
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span>
+                        {lang === 'sv' ? 'Tips om stimstorlek — visa' : 'Group tip — view'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>
+                        {lang === 'sv'
+                          ? `Alla ${analysis.totalFishCount} fiskar trivs ihop (${analysis.bioloadPercent}% plats)`
+                          : `All ${analysis.totalFishCount} fish compatible (${analysis.bioloadPercent}% full)`}
+                      </span>
+                    </>
+                  )}
+                </button>
               </div>
+
+              {/* Expandable Alerts Drawer */}
+              {showHealthDetails && analysis.alerts.length > 0 && (
+                <div className="pt-3 border-t border-[#E6E0D5] space-y-2">
+                  {analysis.alerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className="p-3 rounded-xl bg-[#FAF7F2] border border-[#E6E0D5] flex flex-wrap items-center justify-between gap-3 text-xs"
+                    >
+                      <div>
+                        <span className="font-extrabold text-[#12262A]">
+                          {lang === 'sv' ? alert.titleSv : alert.titleEn}:{' '}
+                        </span>
+                        <span className="text-slate-600">
+                          {lang === 'sv' ? alert.detailSv : alert.detailEn}
+                        </span>
+                      </div>
+
+                      {alert.id.startsWith('school-size-') && alert.speciesIds?.[0] && (
+                        <button
+                          onClick={() => {
+                            const sp = FISH_SPECIES.find((s) => s.id === alert.speciesIds![0]);
+                            if (sp) {
+                              playBubbleSound();
+                              handleSetSpeciesCount(sp.id, sp.minGroupSize);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-400 text-white font-extrabold text-xs cursor-pointer"
+                        >
+                          {lang === 'sv' ? 'Fyll upp stimmet' : 'Fix group size'}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>
 
-        {/* ==================== TAB 1: EXPLORE SPECIES ==================== */}
-        {activeTab === 'explore' && (
-          <section className="space-y-5">
-            {/* Search & Filter Controls */}
-            <div className="bg-abyss-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-4 shadow-xl">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                {/* Search Input */}
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={
-                      lang === 'sv'
-                        ? 'Sök efter fiskart (t.ex. Neontetra, Guppy, Kampfisk, Pansarmal, Räka)...'
-                        : 'Search species (e.g. Neon Tetra, Guppy, Betta, Corydoras, Shrimp)...'
-                    }
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-abyss-950 border border-slate-800 focus:border-cyan-400 text-sm text-white placeholder-slate-500 outline-none transition"
-                  />
-                </div>
-
-                {/* Water Zone & Tank Fit Toggles */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {(['all', 'top', 'middle', 'bottom'] as const).map((z) => (
-                    <button
-                      key={z}
-                      onClick={() => {
-                        playBubbleSound();
-                        setSelectedZone(z);
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                        selectedZone === z
-                          ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400/50'
-                          : 'bg-abyss-950 text-slate-400 hover:text-white border border-slate-800'
-                      }`}
-                    >
-                      {z === 'all'
-                        ? lang === 'sv'
-                          ? 'Alla skikt'
-                          : 'All Zones'
-                        : z === 'top'
-                        ? lang === 'sv'
-                          ? '⬆️ Yta'
-                          : '⬆️ Top'
-                        : z === 'middle'
-                        ? lang === 'sv'
-                          ? '↔️ Mitten'
-                          : '↔️ Middle'
-                        : lang === 'sv'
-                        ? '⬇️ Botten'
-                        : '⬇️ Bottom'}
-                    </button>
-                  ))}
-
+        {/* 2A. PICTURE-BOOK SPECIES EXPLORER */}
+        {activeView === 'explore' && (
+          <section className="space-y-6">
+            {/* Simple 4-Tab Bar + Search */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E6E0D5] pb-4">
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                {(
+                  [
+                    { id: 'all', sv: 'Alla arter (21)', en: 'All Species (21)' },
+                    { id: 'schooling', sv: 'Stimfiskar', en: 'Schooling Fish' },
+                    { id: 'centerpiece', sv: 'Färgklickar & Kungar', en: 'Centerpiece & Color' },
+                    { id: 'bottom', sv: 'Botten & Städpatrull', en: 'Bottom & Cleaners' },
+                  ] as const
+                ).map((tab) => (
                   <button
-                    onClick={() => setOnlyCompatibleWithTankSize(!onlyCompatibleWithTankSize)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                      onlyCompatibleWithTankSize
-                        ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
-                        : 'bg-abyss-950 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {lang === 'sv' ? `Passar ${tankLiters}L` : `Fits ${tankLiters}L`}
-                  </button>
-                </div>
-              </div>
-
-              {/* Category Pills */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                {categories.map((cat) => (
-                  <button
-                    key={cat.id}
+                    key={tab.id}
                     onClick={() => {
                       playBubbleSound();
-                      setSelectedCategory(cat.id);
+                      setGroupFilter(tab.id);
                     }}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition cursor-pointer ${
-                      selectedCategory === cat.id
-                        ? 'bg-cyan-400 text-slate-950 shadow-md'
-                        : 'bg-abyss-950 text-slate-300 hover:text-white border border-slate-800'
+                    className={`px-4 py-2 rounded-full text-xs sm:text-sm font-extrabold whitespace-nowrap transition cursor-pointer ${
+                      groupFilter === tab.id
+                        ? 'bg-[#12262A] text-white shadow-xs'
+                        : 'bg-white text-slate-600 hover:text-[#12262A] border border-[#E6E0D5]'
                     }`}
                   >
-                    {lang === 'sv' ? cat.labelSv : cat.labelEn}
+                    {lang === 'sv' ? tab.sv : tab.en}
                   </button>
                 ))}
               </div>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={lang === 'sv' ? 'Sök fisk (t.ex. Guppy, Räka)…' : 'Search fish…'}
+                  className="w-full pl-9 pr-4 py-2 rounded-full bg-white border border-[#E6E0D5] focus:border-teal-600 text-xs sm:text-sm text-[#12262A] placeholder-slate-400 outline-none"
+                />
+              </div>
             </div>
 
-            {/* Species Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {/* Clean Picture-Book Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredSpecies.map((sp) => {
                 const count = getCountForSpecies(sp.id);
                 const conflictName = hasConflictWithCurrentTank(sp);
@@ -623,64 +554,23 @@ export function App() {
                   <div
                     key={sp.id}
                     onClick={() => setInspectedSpecies(sp)}
-                    className={`rounded-3xl border overflow-hidden transition-all flex flex-col justify-between cursor-pointer group ${
+                    className={`group bg-white rounded-[24px] overflow-hidden border transition-all flex flex-col justify-between cursor-pointer ${
                       count > 0
-                        ? 'bg-abyss-900/95 border-cyan-400/70 shadow-xl shadow-cyan-500/15 ring-2 ring-cyan-400/35'
-                        : 'bg-abyss-900/80 border-slate-800/90 hover:border-cyan-500/50 hover:bg-abyss-900'
+                        ? 'border-[#0D9488] ring-2 ring-[#0D9488]/20 shadow-md'
+                        : 'border-[#E6E0D5] hover:border-slate-300 hover:shadow-md'
                     }`}
                   >
-                    {/* Top Real Fish Photograph Banner */}
                     <div>
-                      <div className="relative h-44 w-full bg-abyss-950 overflow-hidden">
+                      {/* Clean Edge-to-Edge Real Photograph */}
+                      <div className="relative h-48 w-full bg-slate-100 overflow-hidden">
                         <img
                           src={kidMeta.photoUrl}
                           alt={lang === 'sv' ? sp.nameSv : sp.nameEn}
                           loading="lazy"
                           className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-abyss-900 via-transparent to-black/25" />
 
-                        {/* Zone + Temperament Badges */}
-                        <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
-                          <span className="px-2.5 py-0.5 rounded-full bg-abyss-950/85 backdrop-blur-md border border-cyan-400/35 text-[10px] font-extrabold text-cyan-200">
-                            {sp.zone === 'top'
-                              ? lang === 'sv'
-                                ? '⬆️ Yta'
-                                : '⬆️ Top'
-                              : sp.zone === 'middle'
-                              ? lang === 'sv'
-                                ? '↔️ Mitten'
-                                : '↔️ Middle'
-                              : sp.zone === 'bottom'
-                              ? lang === 'sv'
-                                ? '⬇️ Botten'
-                                : '⬇️ Bottom'
-                              : lang === 'sv'
-                              ? '🌊 Hela'
-                              : '🌊 All'}
-                          </span>
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold backdrop-blur-md ${
-                              sp.temperament === 'peaceful'
-                                ? 'bg-emerald-950/85 text-emerald-300 border border-emerald-400/40'
-                                : 'bg-amber-950/85 text-amber-300 border border-amber-400/40'
-                            }`}
-                          >
-                            {sp.temperament === 'peaceful'
-                              ? lang === 'sv'
-                                ? '💚 Snäll'
-                                : '💚 Peaceful'
-                              : sp.temperament === 'territorial'
-                              ? lang === 'sv'
-                                ? '👑 Ensamkung'
-                                : '👑 Territorial'
-                              : lang === 'sv'
-                              ? '⚡ Livlig'
-                              : '⚡ Active'}
-                          </span>
-                        </div>
-
-                        {/* Read Aloud Speaker Button on Card */}
+                        {/* Read Aloud Speaker Button */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -697,115 +587,85 @@ export function App() {
                               );
                             }
                           }}
-                          className="absolute top-3 right-3 px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] flex items-center gap-1 shadow-lg cursor-pointer transition active:scale-95"
-                          title={lang === 'sv' ? 'Lyssna på fisken!' : 'Listen!'}
+                          className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/90 hover:bg-white text-[#12262A] flex items-center justify-center shadow-md cursor-pointer transition active:scale-95"
+                          title={lang === 'sv' ? 'Lyssna på fisken' : 'Listen'}
                         >
-                          <Volume2 className="w-3.5 h-3.5" />
-                          <span>{lang === 'sv' ? 'Lyssna' : 'Listen'}</span>
+                          <Volume2 className="w-4 h-4 text-amber-600" />
                         </button>
 
-                        {/* Floating Animated SVG Mini-Badge */}
-                        <div className="absolute bottom-2 right-3 w-16 h-11 rounded-xl bg-abyss-950/85 backdrop-blur-md border border-cyan-400/35 flex items-center justify-center p-1 shadow-lg">
-                          <FishIllustration visual={sp.visual} className="w-14 h-9" />
-                        </div>
-
-                        {/* Count Badge if in Tank */}
-                        {count > 0 && (
-                          <div className="absolute bottom-2 left-3 px-2.5 py-1 rounded-xl bg-cyan-400 text-slate-950 font-black text-xs shadow-lg">
-                            ✓ {count} st i akvariet
+                        {/* Warning Pill ONLY if there is an actual conflict or tank too small */}
+                        {(conflictName || tooSmallTank) && (
+                          <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-rose-600/95 text-white text-[11px] font-bold shadow-sm flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            <span>
+                              {conflictName
+                                ? lang === 'sv'
+                                  ? `Krockar med ${conflictName}`
+                                  : `Clashes with ${conflictName}`
+                                : lang === 'sv'
+                                ? `Behöver ${sp.minTankLiters} L`
+                                : `Needs ${sp.minTankLiters} L`}
+                            </span>
                           </div>
                         )}
                       </div>
 
-                      {/* Card Body */}
-                      <div className="p-4 sm:p-5 space-y-3">
-                        <div>
-                          <h3 className="text-lg sm:text-xl font-black text-white group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
-                            <span>{kidMeta.emoji}</span>
-                            <span>{lang === 'sv' ? sp.nameSv : sp.nameEn}</span>
+                      {/* Clean Editorial Card Body */}
+                      <div className="p-5 space-y-2">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <h3 className="text-xl font-display font-bold text-[#12262A] group-hover:text-[#0D9488] transition-colors">
+                            {lang === 'sv' ? sp.nameSv : sp.nameEn}
                           </h3>
-                          <p className="text-[11px] italic text-slate-400">
-                            {sp.scientificName} • {sp.sizeCm} cm
-                          </p>
-                        </div>
-
-                        {/* Superpower Kid Pill */}
-                        <div className="px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-400/30 text-xs font-extrabold text-cyan-200">
-                          ✨ {lang === 'sv' ? kidMeta.superpowerSv : kidMeta.superpowerEn}
-                        </div>
-
-                        {/* Kid Fun Fact Teaser */}
-                        <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-100 flex items-start gap-2">
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-2 font-medium">
-                            {lang === 'sv' ? sp.funFactSv : sp.funFactEn}
+                          <span className="text-xs text-slate-400 font-medium">
+                            {sp.sizeCm} cm
                           </span>
                         </div>
 
-                        {/* Compatibility / Tank Size Alerts on Card */}
-                        {(conflictName || tooSmallTank) && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {tooSmallTank && (
-                              <span className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                {lang === 'sv'
-                                  ? `Behöver ${sp.minTankLiters}L+`
-                                  : `Needs ${sp.minTankLiters}L+`}
-                              </span>
-                            )}
-                            {conflictName && (
-                              <span className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                {lang === 'sv'
-                                  ? `Passar ej med ${conflictName}`
-                                  : `Clashes with ${conflictName}`}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        <p className="text-xs sm:text-sm font-semibold text-teal-800">
+                          {kidMeta.emoji} {lang === 'sv' ? kidMeta.superpowerSv : kidMeta.superpowerEn}
+                        </p>
+
+                        <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 pt-0.5">
+                          {lang === 'sv' ? sp.funFactSv : sp.funFactEn}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Card Bottom Bar: Specs & Add Controls */}
+                    {/* Single Primary Action Footer */}
                     <div
                       onClick={(e) => e.stopPropagation()}
-                      className="px-4 sm:px-5 py-3 bg-abyss-950/60 border-t border-slate-800/80 flex items-center justify-between gap-2"
+                      className="px-5 pb-5 pt-1 flex items-center justify-between"
                     >
-                      <div className="text-[11px] text-slate-400 font-mono">
-                        <span>Minst {sp.minTankLiters}L</span> •{' '}
-                        <span>
-                          {sp.tempMinC}–{sp.tempMaxC}°C
-                        </span>
-                      </div>
+                      <span className="text-xs font-semibold text-slate-400">
+                        {lang === 'sv' ? 'Läs mer →' : 'Read more →'}
+                      </span>
 
                       {count === 0 ? (
                         <button
                           onClick={() => handleQuickAddSpecies(sp)}
-                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 active:scale-95 text-slate-950 font-black text-xs transition flex items-center gap-1 shadow-md shadow-cyan-500/15 cursor-pointer"
+                          className="px-4 py-2 rounded-full bg-[#0D9488] hover:bg-[#0F766E] active:scale-95 text-white font-extrabold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                         >
-                          <Plus className="w-3.5 h-3.5" />
+                          <Plus className="w-4 h-4" />
                           <span>
                             {lang === 'sv'
                               ? sp.minGroupSize > 1
-                                ? `Plums i! (${sp.recommendedGroupSize} st)`
-                                : 'Plums i akvariet!'
-                              : sp.minGroupSize > 1
-                              ? `Splash in! (${sp.recommendedGroupSize})`
-                              : 'Splash in!'}
+                                ? `Lägg i (${sp.recommendedGroupSize} st)`
+                                : 'Lägg i'
+                              : 'Add to tank'}
                           </span>
                         </button>
                       ) : (
-                        <div className="flex items-center gap-1.5 bg-abyss-950 border border-cyan-400/50 rounded-xl p-1">
+                        <div className="flex items-center gap-2 bg-[#FAF7F2] border border-[#0D9488]/40 rounded-full p-1">
                           <button
                             onClick={() => {
                               playBubbleSound();
                               handleSetSpeciesCount(sp.id, count - 1);
                             }}
-                            className="w-7 h-7 rounded-lg bg-abyss-800 hover:bg-abyss-700 text-white flex items-center justify-center cursor-pointer"
+                            className="w-7 h-7 rounded-full bg-white hover:bg-slate-100 text-[#12262A] border border-[#E6E0D5] flex items-center justify-center cursor-pointer"
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
-                          <span className="px-2 font-mono font-black text-sm text-cyan-300">
+                          <span className="px-2 font-extrabold text-xs text-[#0D9488]">
                             {count} st
                           </span>
                           <button
@@ -813,7 +673,7 @@ export function App() {
                               playBubbleSound();
                               handleSetSpeciesCount(sp.id, count + 1);
                             }}
-                            className="w-7 h-7 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-slate-950 flex items-center justify-center font-bold cursor-pointer"
+                            className="w-7 h-7 rounded-full bg-[#0D9488] hover:bg-[#0F766E] text-white flex items-center justify-center font-bold cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
@@ -827,407 +687,42 @@ export function App() {
           </section>
         )}
 
-        {/* ==================== TAB 2: TANK PLANNER & COMPATIBILITY ==================== */}
-        {activeTab === 'planner' && (
+        {/* 2B. SHOPPING CHECKLIST & SAVED TANKS */}
+        {activeView === 'checklist' && (
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left 2 Columns: Compatibility Report & Species List */}
-            <div className="lg:col-span-2 space-y-5">
-              {/* Alerts & Recommendations */}
-              <div className="bg-abyss-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-cyan-400" />
-                    <span>
-                      {lang === 'sv'
-                        ? 'Kompatibilitet & Vattenvärden'
-                        : 'Compatibility & Water Parameters'}
-                    </span>
+            <div className="lg:col-span-2 bg-white border border-[#E6E0D5] rounded-[24px] p-6 space-y-5 shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-display font-bold text-[#12262A]">
+                    {lang === 'sv' ? 'Inköpslista till djuraffären' : 'Pet Store Shopping List'}
                   </h2>
-                </div>
-
-                {analysis.alerts.length === 0 ? (
-                  <p className="text-sm text-slate-400">
+                  <p className="text-xs text-slate-500 mt-0.5">
                     {lang === 'sv'
-                      ? 'Lägg till fiskar i akvariet för att se hur de passar ihop!'
-                      : 'Add fish to your tank to analyze compatibility!'}
+                      ? 'Bocka av det ni redan har hemma och kopiera listan inför besöket.'
+                      : 'Check off what you already have at home.'}
                   </p>
-                ) : (
-                  <div className="space-y-3">
-                    {analysis.alerts.map((alert) => {
-                      const isError = alert.severity === 'error';
-                      const isWarn = alert.severity === 'warning';
-                      const isSuccess = alert.severity === 'success';
-
-                      return (
-                        <div
-                          key={alert.id}
-                          className={`p-4 rounded-2xl border flex items-start justify-between gap-3 ${
-                            isError
-                              ? 'bg-rose-500/10 border-rose-500/40 text-rose-100'
-                              : isWarn
-                              ? 'bg-amber-500/10 border-amber-500/40 text-amber-100'
-                              : isSuccess
-                              ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-100'
-                              : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-100'
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            {isError ? (
-                              <XCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
-                            ) : isWarn ? (
-                              <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                            ) : isSuccess ? (
-                              <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-                            ) : (
-                              <Info className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                            )}
-                            <div className="space-y-1">
-                              <h4 className="text-sm font-extrabold">
-                                {lang === 'sv' ? alert.titleSv : alert.titleEn}
-                              </h4>
-                              <p className="text-xs opacity-90 leading-relaxed">
-                                {lang === 'sv' ? alert.detailSv : alert.detailEn}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* 1-Tap Auto-fix for Schooling Size Warning */}
-                          {alert.id.startsWith('school-size-') && alert.speciesIds?.[0] && (
-                            <button
-                              onClick={() => {
-                                const spId = alert.speciesIds![0];
-                                const sp = FISH_SPECIES.find((s) => s.id === spId);
-                                if (sp) {
-                                  playBubbleSound();
-                                  handleSetSpeciesCount(sp.id, sp.minGroupSize);
-                                }
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs whitespace-nowrap cursor-pointer flex-shrink-0"
-                            >
-                              {lang === 'sv' ? 'Fyll upp stimmet' : 'Fix school size'}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Detailed List of Selected Species */}
-              <div className="bg-abyss-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4">
-                <h3 className="text-base font-black text-white">
-                  {lang === 'sv'
-                    ? `Valda arter i akvariet (${analysis.totalFishCount} individer)`
-                    : `Selected Species (${analysis.totalFishCount} total)`}
-                </h3>
-
-                {fishEntries.length === 0 ? (
-                  <p className="text-sm text-slate-400">
-                    {lang === 'sv' ? 'Inga fiskar valda ännu.' : 'No fish selected yet.'}
-                  </p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {fishEntries.map((entry) => {
-                      const sp = FISH_SPECIES.find((s) => s.id === entry.speciesId);
-                      if (!sp) return null;
-                      return (
-                        <div
-                          key={sp.id}
-                          className="p-3.5 rounded-2xl bg-abyss-950/90 border border-slate-800 flex flex-wrap items-center justify-between gap-3"
-                        >
-                          <div
-                            onClick={() => setInspectedSpecies(sp)}
-                            className="flex items-center gap-3 cursor-pointer"
-                          >
-                            <FishIllustration visual={sp.visual} className="w-16 h-10" />
-                            <div>
-                              <h4 className="text-sm font-extrabold text-white hover:text-cyan-300">
-                                {lang === 'sv' ? sp.nameSv : sp.nameEn}
-                              </h4>
-                              <p className="text-[11px] text-slate-400">
-                                {sp.tempMinC}–{sp.tempMaxC}°C • pH {sp.phMin}–{sp.phMax} •{' '}
-                                {sp.sizeCm} cm
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleSetSpeciesCount(sp.id, entry.count - 1)}
-                              className="w-8 h-8 rounded-xl bg-abyss-800 hover:bg-abyss-700 text-white flex items-center justify-center cursor-pointer"
-                            >
-                              <Minus className="w-4 h-4" />
-                            </button>
-                            <span className="w-10 text-center font-mono font-black text-sm text-cyan-300">
-                              {entry.count} st
-                            </span>
-                            <button
-                              onClick={() => handleSetSpeciesCount(sp.id, entry.count + 1)}
-                              className="w-8 h-8 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 flex items-center justify-center font-bold cursor-pointer"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleSetSpeciesCount(sp.id, 0)}
-                              className="p-2 rounded-xl text-slate-500 hover:text-rose-400 cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Column: Water Parameters, Zone Distribution & Cloud Save */}
-            <div className="space-y-5">
-              {/* Bioload & Parameters Card */}
-              <div className="bg-abyss-900 border border-slate-800 rounded-3xl p-5 space-y-4">
-                <h3 className="text-base font-black text-white">
-                  {lang === 'sv' ? 'Balans & Vattenskikt' : 'Tank Balance & Zones'}
-                </h3>
-
-                {/* Bioload Bar */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span className="text-slate-400">
-                      {lang === 'sv' ? 'Biologisk belastning' : 'Bioload Capacity'}
-                    </span>
-                    <span className="font-mono text-cyan-300">{analysis.bioloadPercent}%</span>
-                  </div>
-                  <div className="w-full h-3 rounded-full bg-abyss-950 overflow-hidden border border-slate-800">
-                    <div
-                      className={`h-full transition-all duration-500 ${
-                        analysis.bioloadPercent > 105
-                          ? 'bg-rose-500'
-                          : analysis.bioloadPercent > 85
-                          ? 'bg-amber-400'
-                          : 'bg-emerald-400'
-                      }`}
-                      style={{ width: `${Math.min(100, analysis.bioloadPercent)}%` }}
-                    />
-                  </div>
                 </div>
 
-                {/* Water Parameters Sweet Spot */}
-                {analysis.tempOverlap && (
-                  <div className="grid grid-cols-2 gap-2.5 pt-1">
-                    <div className="p-3 rounded-2xl bg-abyss-950 border border-slate-800">
-                      <span className="text-[11px] text-slate-400 font-bold flex items-center gap-1">
-                        <Thermometer className="w-3.5 h-3.5 text-rose-400" />
-                        {lang === 'sv' ? 'Måltemperatur' : 'Target Temp'}
-                      </span>
-                      <div className="text-base font-black font-mono text-white mt-0.5">
-                        {analysis.tempOverlap.valid
-                          ? `${analysis.tempOverlap.min}–${analysis.tempOverlap.max}°C`
-                          : 'Krock!'}
-                      </div>
-                    </div>
-
-                    <div className="p-3 rounded-2xl bg-abyss-950 border border-slate-800">
-                      <span className="text-[11px] text-slate-400 font-bold flex items-center gap-1">
-                        <Droplets className="w-3.5 h-3.5 text-cyan-400" />
-                        {lang === 'sv' ? 'Gemensamt pH' : 'Target pH'}
-                      </span>
-                      <div className="text-base font-black font-mono text-white mt-0.5">
-                        {analysis.phOverlap?.valid
-                          ? `${analysis.phOverlap.min.toFixed(1)}–${analysis.phOverlap.max.toFixed(1)}`
-                          : 'Krock!'}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Water Zone Breakdown */}
-                <div className="space-y-2 pt-2 border-t border-slate-800">
-                  <span className="text-xs font-bold text-slate-400 block">
-                    {lang === 'sv' ? 'Fördelning i vattenskikten:' : 'Water Zone Distribution:'}
-                  </span>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-abyss-950">
-                      <span className="text-cyan-300 font-bold">
-                        {lang === 'sv' ? 'Ytskiktet (Top)' : 'Top Zone'}
-                      </span>
-                      <span className="font-mono font-bold">{analysis.zoneCounts.top} st</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-abyss-950">
-                      <span className="text-emerald-300 font-bold">
-                        {lang === 'sv' ? 'Mellanskiktet (Mitten)' : 'Mid Zone'}
-                      </span>
-                      <span className="font-mono font-bold">{analysis.zoneCounts.middle} st</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-abyss-950">
-                      <span className="text-amber-300 font-bold">
-                        {lang === 'sv' ? 'Bottenskiktet (Botten)' : 'Bottom Zone'}
-                      </span>
-                      <span className="font-mono font-bold">{analysis.zoneCounts.bottom} st</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Save / Load Family Tank Plans (SQLite Persistence) */}
-              <div className="bg-abyss-900 border border-slate-800 rounded-3xl p-5 space-y-4">
-                <h3 className="text-base font-black text-white flex items-center gap-2">
-                  <Bookmark className="w-4 h-4 text-cyan-400" />
-                  <span>{lang === 'sv' ? 'Spara Ert Akvarium' : 'Save Tank Plan'}</span>
-                </h3>
-
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={tankName}
-                    onChange={(e) => setTankName(e.target.value)}
-                    placeholder={lang === 'sv' ? 'Namn på akvariet...' : 'Tank name...'}
-                    className="w-full px-3.5 py-2 rounded-xl bg-abyss-950 border border-slate-700 text-sm text-white outline-none focus:border-cyan-400"
-                  />
-                  <button
-                    onClick={handleSaveTankToCloud}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:brightness-110 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-cyan-500/20"
-                  >
-                    {lang === 'sv' ? 'Spara i databasen' : 'Save to Database'}
-                  </button>
-                  {saveSuccessMessage && (
-                    <p className="text-xs text-emerald-400 font-bold text-center">
-                      {saveSuccessMessage}
-                    </p>
-                  )}
-                </div>
-
-                {savedTanks.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-slate-800">
-                    <span className="text-xs font-bold text-slate-400 block">
-                      {lang === 'sv' ? 'Sparade akvarier:' : 'Saved Tanks:'}
-                    </span>
-                    {savedTanks.map((t) => (
-                      <div
-                        key={t.id}
-                        onClick={() => {
-                          playBubbleSound();
-                          setTankName(t.name);
-                          setTankLiters(t.liters);
-                          setAquascape(t.aquascape);
-                          setFishEntries(t.fish);
-                        }}
-                        className="p-2.5 rounded-xl bg-abyss-950 hover:bg-abyss-850 border border-slate-800 flex items-center justify-between cursor-pointer text-xs"
-                      >
-                        <div>
-                          <div className="font-bold text-white">{t.name}</div>
-                          <div className="text-[10px] text-slate-400">{t.liters}L</div>
-                        </div>
-                        <span className="text-cyan-400 font-bold">
-                          {lang === 'sv' ? 'Öppna' : 'Load'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ==================== TAB 3: SHOPPING LIST & STARTER GUIDE ==================== */}
-        {activeTab === 'checklist' && (
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Fish Shopping List for the Pet Store */}
-            <div className="bg-abyss-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-black text-white flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-cyan-400" />
+                <button
+                  onClick={copyShoppingList}
+                  className="px-4 py-2 rounded-full bg-[#12262A] hover:bg-slate-800 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4 text-teal-400" />
                   <span>
-                    {lang === 'sv'
-                      ? `Inköpslista till Djuraffären (${tankLiters}L)`
-                      : `Fish Store Shopping List (${tankLiters}L)`}
+                    {copiedChecklist
+                      ? lang === 'sv'
+                        ? 'Kopierad!'
+                        : 'Copied!'
+                      : lang === 'sv'
+                      ? 'Kopiera inköpslista'
+                      : 'Copy list'}
                   </span>
-                </h2>
+                </button>
               </div>
 
-              {fishEntries.length === 0 ? (
-                <p className="text-sm text-slate-400">
-                  {lang === 'sv'
-                    ? 'Ni har inte lagt till några fiskar i akvariet än.'
-                    : 'No fish added to the list yet.'}
-                </p>
-              ) : (
-                <div className="space-y-2.5">
-                  {fishEntries.map((entry) => {
-                    const sp = FISH_SPECIES.find((s) => s.id === entry.speciesId);
-                    if (!sp) return null;
-                    return (
-                      <div
-                        key={sp.id}
-                        className="p-3.5 rounded-2xl bg-abyss-950 border border-slate-800 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <FishIllustration visual={sp.visual} className="w-14 h-9" />
-                          <div>
-                            <div className="text-sm font-extrabold text-white">
-                              {entry.count} st {lang === 'sv' ? sp.nameSv : sp.nameEn}
-                            </div>
-                            <div className="text-[11px] italic text-slate-400">
-                              {sp.scientificName}
-                            </div>
-                          </div>
-                        </div>
-                        <span className="px-2.5 py-1 rounded-lg bg-cyan-500/15 text-cyan-300 font-mono text-xs font-bold">
-                          {sp.dietSv.split('—')[0]}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Kid-Friendly 3-Step Startup Guide */}
-              <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-2.5 mt-4">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
-                  <BookOpen className="w-4 h-4" />
-                  <span>
-                    {lang === 'sv'
-                      ? 'Så här startar ni ert akvarium steg för steg:'
-                      : 'How to start your aquarium step-by-step:'}
-                  </span>
-                </h3>
-                <ol className="text-xs text-slate-200 space-y-2 list-decimal list-inside leading-relaxed">
-                  <li>
-                    <strong>{lang === 'sv' ? 'Dag 1 — Inred & fyll vatten:' : 'Day 1 — Setup:'}</strong>{' '}
-                    {lang === 'sv'
-                      ? 'Skölj sanden i en hink, lägg i sand, rötter och växter. Fyll på vatten, tillsätt vattenberedningsmedel och starta filter + doppvärmare (25°C).'
-                      : 'Rinse sand, place driftwood and live plants, fill with conditioned water, and turn on filter & heater.'}
-                  </li>
-                  <li>
-                    <strong>
-                      {lang === 'sv' ? 'Vecka 1 — Nyttobakterier & tåliga pionjärer:' : 'Week 1 — Cycle:'}
-                    </strong>{' '}
-                    {lang === 'sv'
-                      ? 'Tillsätt bakteriekultur på flaska. Börja med den första fiskgruppen (t.ex. 6 pansarmalar eller tetror) och mata pyttelite första veckan!'
-                      : 'Add beneficial starter bacteria and introduce your first hardy group instead of all fish on day one.'}
-                  </li>
-                  <li>
-                    <strong>
-                      {lang === 'sv' ? 'Vecka 3+ — Fyll på resten av invånarna:' : 'Week 3+ — Full crew:'}
-                    </strong>{' '}
-                    {lang === 'sv'
-                      ? 'När filtret är inkört kan ni skaffa resten av fiskarna! Byt ca 25% av vattnet en gång i veckan.'
-                      : 'Once the filter matures, add the remaining fish and do a 25% weekly water change.'}
-                  </li>
-                </ol>
-              </div>
-            </div>
-
-            {/* Equipment Checklist */}
-            <div className="bg-abyss-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4">
-              <h2 className="text-lg font-black text-white">
-                {lang === 'sv' ? 'Checklista för Utrustning' : 'Equipment Checklist'}
-              </h2>
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {EQUIPMENT_CHECKLIST.map((item) => {
-                  const isChecked = checkedEquipment.includes(item.id);
+                  const checked = checkedEquipment.includes(item.id);
                   return (
                     <div
                       key={item.id}
@@ -1235,30 +730,34 @@ export function App() {
                         playBubbleSound();
                         setCheckedEquipment((prev) =>
                           prev.includes(item.id)
-                            ? prev.filter((id) => id !== item.id)
+                            ? prev.filter((i) => i !== item.id)
                             : [...prev, item.id]
                         );
                       }}
-                      className={`p-3.5 rounded-2xl border transition cursor-pointer flex items-start gap-3 ${
-                        isChecked
-                          ? 'bg-emerald-500/10 border-emerald-500/40'
-                          : 'bg-abyss-950 border-slate-800 hover:border-slate-700'
+                      className={`p-4 rounded-2xl border flex items-start gap-3.5 cursor-pointer transition ${
+                        checked
+                          ? 'bg-emerald-50/50 border-emerald-200'
+                          : 'bg-[#FAF7F2] border-[#E6E0D5] hover:border-slate-300'
                       }`}
                     >
                       <div
                         className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                          isChecked
-                            ? 'bg-emerald-400 text-slate-950'
-                            : 'border border-slate-600 bg-abyss-900'
+                          checked
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-white border border-slate-300'
                         }`}
                       >
-                        {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        {checked && <Check className="w-3.5 h-3.5" />}
                       </div>
-                      <div className="space-y-0.5">
-                        <div className="text-sm font-extrabold text-white">
+                      <div>
+                        <div
+                          className={`text-sm font-bold ${
+                            checked ? 'line-through text-slate-400' : 'text-[#12262A]'
+                          }`}
+                        >
                           {lang === 'sv' ? item.nameSv : item.nameEn}
                         </div>
-                        <p className="text-xs text-slate-400 leading-relaxed">
+                        <p className="text-xs text-slate-500 mt-0.5">
                           {lang === 'sv' ? item.whySv : item.whyEn}
                         </p>
                       </div>
@@ -1267,17 +766,64 @@ export function App() {
                 })}
               </div>
             </div>
+
+            {/* Save & Load Family Tank Plans */}
+            <div className="bg-white border border-[#E6E0D5] rounded-[24px] p-6 space-y-4 h-fit shadow-2xs">
+              <h3 className="text-lg font-display font-bold text-[#12262A]">
+                {lang === 'sv' ? 'Spara er plan' : 'Save Tank Plan'}
+              </h3>
+              <div className="space-y-2.5">
+                <input
+                  type="text"
+                  value={tankName}
+                  onChange={(e) => setTankName(e.target.value)}
+                  placeholder="Namn på akvariet…"
+                  className="w-full px-3.5 py-2 rounded-xl bg-[#FAF7F2] border border-[#E6E0D5] text-sm font-bold text-[#12262A] outline-none"
+                />
+                <button
+                  onClick={handleSaveTankToCloud}
+                  className="w-full py-2.5 rounded-full bg-[#0D9488] hover:bg-[#0F766E] text-white font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Bookmark className="w-4 h-4" />
+                  <span>{lang === 'sv' ? 'Spara akvarium' : 'Save aquarium'}</span>
+                </button>
+              </div>
+
+              {savedTanks.length > 0 && (
+                <div className="pt-3 border-t border-[#E6E0D5] space-y-2">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    {lang === 'sv' ? 'Sparade akvarier' : 'Saved tanks'}
+                  </div>
+                  {savedTanks.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => {
+                        setTankName(t.name);
+                        setTankLiters(t.liters);
+                        setAquascape(t.aquascape);
+                        setFishEntries(t.fish || []);
+                        setActiveView('explore');
+                      }}
+                      className="w-full text-left p-3 rounded-xl bg-[#FAF7F2] hover:bg-[#EFECE6] border border-[#E6E0D5] text-xs flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="font-bold text-[#12262A]">{t.name}</span>
+                      <span className="text-slate-500">{t.liters} L</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
         )}
       </main>
 
-      {/* SPECIES DETAIL MODAL */}
+      {/* SPECIES STORY MODAL */}
       <SpeciesDetailModal
         species={inspectedSpecies}
         currentCount={inspectedSpecies ? getCountForSpecies(inspectedSpecies.id) : 0}
         onClose={() => setInspectedSpecies(null)}
         onChangeCount={handleSetSpeciesCount}
-        onSelectOtherSpecies={(sp) => setInspectedSpecies(sp)}
+        onSelectOtherSpecies={(other) => setInspectedSpecies(other)}
         lang={lang}
       />
     </div>

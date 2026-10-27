@@ -22,11 +22,6 @@ import {
   Sparkles,
   Sun,
   Moon,
-  Palette,
-  Info,
-  Droplets,
-  Layers,
-  Camera,
   Trophy,
   Volume2,
   ArrowRight,
@@ -45,8 +40,8 @@ interface InteractiveAquariumProps {
 interface SimFish {
   uid: string;
   species: FishSpecies;
-  x: number; // 5..95 percentage
-  y: number; // 10..88 percentage
+  x: number;
+  y: number;
   vx: number;
   vy: number;
   facingRight: boolean;
@@ -54,13 +49,10 @@ interface SimFish {
   phase: number;
 }
 
-type FoodKind = 'flakes' | 'wafer' | 'treat';
-
 interface FoodPellet {
   id: string;
   x: number;
   y: number;
-  kind: FoodKind;
 }
 
 interface HappyReaction {
@@ -78,9 +70,9 @@ interface BubbleParticle {
   delay: number;
 }
 
-const BUBBLES: BubbleParticle[] = Array.from({ length: 16 }, (_, i) => ({
+const BUBBLES: BubbleParticle[] = Array.from({ length: 14 }, (_, i) => ({
   id: i,
-  x: 7 + ((i * 6) % 86),
+  x: 8 + ((i * 6.5) % 84),
   size: 8 + (i % 4) * 4,
   duration: 4.5 + (i % 5),
   delay: (i * 0.6) % 4,
@@ -95,21 +87,19 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
   lang,
 }) => {
   const [nightMode, setNightMode] = useState(false);
-  const [showZoneOverlay, setShowZoneOverlay] = useState(false);
-  const [photoMode, setPhotoMode] = useState(false);
-  const [selectedFoodKind, setSelectedFoodKind] = useState<FoodKind>('flakes');
   const [foodPellets, setFoodPellets] = useState<FoodPellet[]>([]);
   const [reactions, setReactions] = useState<HappyReaction[]>([]);
   const [simFish, setSimFish] = useState<SimFish[]>([]);
   const [treasureOpen, setTreasureOpen] = useState(false);
 
-  // Kids "Fisk-Jakten" Mini-Game & Sticker Album / Diploma State
+  // Kids "Fisk-Jakten" Mini-Game & Sticker Album State
   const [questActive, setQuestActive] = useState(false);
   const [questTarget, setQuestTarget] = useState<FishSpecies | null>(null);
   const [questSolved, setQuestSolved] = useState(false);
   const [starsEarned, setStarsEarned] = useState<number>(() => {
     try {
-      return Number(localStorage.getItem('fena_kids_stars') || '0');
+      const val = Number(localStorage.getItem('fena_kids_stars') || '0');
+      return Number.isFinite(val) && val >= 0 ? val : 0;
     } catch {
       return 0;
     }
@@ -117,7 +107,10 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
   const [unlockedStickers, setUnlockedStickers] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('fena_kids_stickers');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
     } catch {}
     return [];
   });
@@ -135,7 +128,6 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
     });
   };
 
-  // Automatically unlock stickers for species present in the tank
   useEffect(() => {
     const activeIds = fishEntries.filter((e) => e.count > 0).map((e) => e.speciesId);
     if (activeIds.length === 0) return;
@@ -152,7 +144,6 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
 
   const tankRef = useRef<HTMLDivElement>(null);
 
-  // Pick a target species from currently active fish in the tank
   const pickNextQuestTarget = (speakClue = true) => {
     const activeSpecies = fishEntries
       .filter((e) => e.count > 0)
@@ -172,14 +163,10 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
 
     if (speakClue) {
       const meta = getKidMeta(chosen.id);
-      speakKidsText(
-        lang === 'sv' ? meta.questClueSv : meta.questClueEn,
-        lang
-      );
+      speakKidsText(lang === 'sv' ? meta.questClueSv : meta.questClueEn, lang);
     }
   };
 
-  // Keep quest target valid if fish change
   useEffect(() => {
     if (questActive) {
       const stillInTank =
@@ -191,7 +178,6 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
     }
   }, [fishEntries, questActive]);
 
-  // Build simulated fish instances whenever fishEntries change
   useEffect(() => {
     const nextSim: SimFish[] = [];
 
@@ -205,7 +191,7 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
       let yMin = 32;
       let yMax = 66;
       if (species.zone === 'top') {
-        yMin = 13;
+        yMin = 14;
         yMax = 32;
       } else if (species.zone === 'bottom') {
         yMin = 72;
@@ -246,7 +232,6 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
     setSimFish(nextSim);
   }, [fishEntries]);
 
-  // Animation loop for fish and food pellets
   useEffect(() => {
     let frameId: number;
     let lastTime = performance.now();
@@ -258,15 +243,11 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
       setFoodPellets((prevPellets) => {
         if (prevPellets.length === 0) return prevPellets;
         return prevPellets
-          .map((p) => {
-            const sinkSpeed = p.kind === 'wafer' ? 0.65 : p.kind === 'treat' ? 0.28 : 0.35;
-            const nextY = p.kind === 'wafer' ? Math.min(86, p.y + sinkSpeed * dt) : p.y + sinkSpeed * dt;
-            return {
-              ...p,
-              y: nextY,
-              x: p.x + Math.sin(now * 0.004 + p.y) * (p.kind === 'wafer' ? 0.02 : 0.08),
-            };
-          })
+          .map((p) => ({
+            ...p,
+            y: p.y + 0.35 * dt,
+            x: p.x + Math.sin(now * 0.004 + p.y) * 0.08,
+          }))
           .filter((p) => p.y < 89);
       });
 
@@ -297,7 +278,7 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
           let yMin = 30;
           let yMax = 68;
           if (sp.zone === 'top') {
-            yMin = 12;
+            yMin = 14;
             yMax = 33;
           } else if (sp.zone === 'bottom') {
             yMin = 73;
@@ -334,12 +315,7 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
                 const reactId = `react-${Date.now()}-${Math.random()}`;
                 setReactions((curr) => [
                   ...curr.slice(-8),
-                  {
-                    id: reactId,
-                    x: eatX,
-                    y: eatY - 4,
-                    symbol: nearest?.kind === 'treat' ? '🤩' : '❤️',
-                  },
+                  { id: reactId, x: eatX, y: eatY - 4, symbol: '❤️' },
                 ]);
                 setTimeout(() => {
                   setReactions((curr) => curr.filter((r) => r.id !== reactId));
@@ -385,7 +361,7 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
               vy = -Math.abs(vy) * 0.6;
             }
           } else {
-            y = Math.max(10, Math.min(88, y));
+            y = Math.max(12, Math.min(88, y));
           }
 
           facingRight = vx >= 0;
@@ -411,20 +387,18 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
   const handleDropFood = (clientX?: number, clientY?: number) => {
     playFeedSplashSound();
     let baseX = 50;
-    let baseY = 12;
+    let baseY = 14;
 
     if (clientX !== undefined && clientY !== undefined && tankRef.current) {
       const rect = tankRef.current.getBoundingClientRect();
       baseX = Math.max(10, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
-      baseY = Math.max(8, Math.min(45, ((clientY - rect.top) / rect.height) * 100));
+      baseY = Math.max(10, Math.min(45, ((clientY - rect.top) / rect.height) * 100));
     }
 
-    const count = selectedFoodKind === 'wafer' ? 3 : 7;
-    const newPellets: FoodPellet[] = Array.from({ length: count }, (_, i) => ({
+    const newPellets: FoodPellet[] = Array.from({ length: 7 }, (_, i) => ({
       id: `food-${Date.now()}-${i}-${Math.random()}`,
-      x: Math.max(8, Math.min(92, baseX + (i - Math.floor(count / 2)) * 4)),
+      x: Math.max(8, Math.min(92, baseX + (i - 3) * 4)),
       y: baseY + (i % 3) * 2.5,
-      kind: selectedFoodKind,
     }));
 
     setFoodPellets((prev) => [...prev.slice(-20), ...newPellets]);
@@ -433,7 +407,6 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
   const handleFishClick = (e: React.MouseEvent, f: SimFish) => {
     e.stopPropagation();
 
-    // If Kids Quest Mode is active, check if this is the target fish!
     if (questActive && questTarget && !questSolved) {
       if (f.species.id === questTarget.id) {
         playSuccessChime();
@@ -453,12 +426,8 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
         } catch {}
         speakKidsText(
           lang === 'sv'
-            ? nextStars === 3
-              ? `Hurra! Rätt gissat! Du hittade ${f.species.nameSv} och låste upp ditt eget Akvarium-Diplom!`
-              : `Hurra! Rätt gissat! Du hittade ${f.species.nameSv} och fick ett nytt klistermärke!`
-            : nextStars === 3
-            ? `Hooray! You found the ${f.species.nameEn} and unlocked your Aquarium Diploma!`
-            : `Hooray! You found the ${f.species.nameEn} and earned a new sticker!`,
+            ? `Hurra! Rätt gissat! Du hittade ${f.species.nameSv}!`
+            : `Hooray! You found the ${f.species.nameEn}!`,
           lang
         );
         return;
@@ -480,228 +449,52 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
 
   const getWaterGradient = () => {
     if (nightMode) {
-      return 'from-[#040b24] via-[#071638] to-[#030918]';
+      return 'from-[#06152d] via-[#0b2246] to-[#040d1e]';
     }
     switch (aquascape) {
-      case 'amazonas':
-        return 'from-[#083344] via-[#0e4158] to-[#082638]';
       case 'nature_planted':
-        return 'from-[#064e3b] via-[#0f5257] to-[#062c30]';
+        return 'from-[#0c6368] via-[#0e4f57] to-[#08323a]';
       case 'treasure_reef':
-        return 'from-[#0369a1] via-[#075985] to-[#0c4a6e]';
+        return 'from-[#0776a0] via-[#0a5b82] to-[#073b58]';
+      case 'amazonas':
+        return 'from-[#0d5260] via-[#0c3f4d] to-[#072630]';
       case 'blackwater':
-        return 'from-[#451a03] via-[#3b1c0a] to-[#1c0f06]';
+        return 'from-[#572c10] via-[#40200b] to-[#241106]';
     }
   };
 
   const themes: { id: AquascapeTheme; labelSv: string; labelEn: string }[] = [
-    { id: 'nature_planted', labelSv: '🌿 Grön Växt-Oas', labelEn: '🌿 Lush Planted' },
-    { id: 'treasure_reef', labelSv: '🏴‍☠️ Skattkista & Äventyr', labelEn: '🏴‍☠️ Kids’ Treasure' },
-    { id: 'amazonas', labelSv: '🪵 Amazonas Flod', labelEn: '🪵 Amazon River' },
-    { id: 'blackwater', labelSv: '🍂 Rio Negro', labelEn: '🍂 Blackwater' },
-  ];
-
-  const foodOptions: { id: FoodKind; labelSv: string; labelEn: string }[] = [
-    { id: 'flakes', labelSv: '🥣 Flingor', labelEn: '🥣 Flakes' },
-    { id: 'wafer', labelSv: '🥦 Alg-tablett', labelEn: '🥦 Algae Wafer' },
-    { id: 'treat', labelSv: '🪱 Lyx-godis', labelEn: '🪱 Bloodworm Treat' },
+    { id: 'nature_planted', labelSv: '🌿 Växtoas', labelEn: '🌿 Planted' },
+    { id: 'treasure_reef', labelSv: '🏴‍☠️ Skattkista', labelEn: '🏴‍☠️ Treasure' },
+    { id: 'amazonas', labelSv: '🪵 Amazonas', labelEn: '🪵 Amazon' },
   ];
 
   return (
-    <div className="bg-abyss-900/90 border border-cyan-500/25 rounded-3xl overflow-hidden shadow-2xl">
-      {/* Top Control Bar */}
-      <div className="px-4 sm:px-6 py-3 bg-abyss-950/90 border-b border-cyan-500/20 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 text-xs font-extrabold">
-            <Droplets className="w-3.5 h-3.5 text-cyan-400" />
-            <span>{liters} Liter</span>
-          </span>
-
-          {/* Food Type Selector + Feed Button */}
-          <div className="flex items-center gap-1 bg-abyss-900 p-1 rounded-xl border border-slate-800">
-            {foodOptions.map((fo) => (
-              <button
-                key={fo.id}
-                onClick={() => {
-                  playBubbleSound();
-                  setSelectedFoodKind(fo.id);
-                }}
-                className={`px-2 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
-                  selectedFoodKind === fo.id
-                    ? 'bg-amber-400 text-slate-950 shadow-sm'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                {lang === 'sv' ? fo.labelSv : fo.labelEn}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => handleDropFood()}
-            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 hover:brightness-110 active:scale-95 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer transition"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{lang === 'sv' ? 'Mata fiskarna!' : 'Feed the Fish!'}</span>
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Kids "Fisk-Jakten" Mini-Game Toggle */}
-          <button
-            onClick={() => {
-              if (!questActive) {
-                setQuestActive(true);
-                pickNextQuestTarget(true);
-              } else {
-                setQuestActive(false);
-              }
-            }}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-black border transition flex items-center gap-1.5 cursor-pointer ${
-              questActive
-                ? 'bg-gradient-to-r from-pink-500 to-amber-500 border-amber-300 text-white shadow-lg shadow-pink-500/25'
-                : 'bg-abyss-900 border-amber-400/40 text-amber-200 hover:border-amber-300'
-            }`}
-          >
-            <Trophy className="w-3.5 h-3.5 text-amber-300" />
-            <span>
-              {lang === 'sv' ? '🕵️‍♂️ Fisk-Jakten' : '🕵️‍♂️ Find the Fish'}
-            </span>
-            {starsEarned > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-black/40 text-amber-300 text-[10px] font-black">
-                ⭐ {starsEarned}
-              </span>
-            )}
-          </button>
-
-          {/* Kids Sticker Album & Printable Diploma Button */}
-          <button
-            onClick={() => {
-              playBubbleSound();
-              setAlbumInitialTab(starsEarned >= 3 ? 'diploma' : 'stickers');
-              setAlbumModalOpen(true);
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black border transition flex items-center gap-1.5 cursor-pointer ${
-              starsEarned >= 3
-                ? 'bg-gradient-to-r from-amber-400/25 to-emerald-500/25 border-amber-300 text-amber-200 hover:brightness-110 shadow-md shadow-amber-500/10'
-                : 'bg-abyss-900 border-cyan-400/40 text-cyan-200 hover:border-cyan-300'
-            }`}
-            title={
-              lang === 'sv'
-                ? 'Öppna Klistermärkes-Album & Akvarium-Diplom'
-                : 'Open Sticker Album & Aquarium Diploma'
-            }
-          >
-            <Award className="w-3.5 h-3.5 text-amber-300" />
-            <span>
-              {starsEarned >= 3
-                ? lang === 'sv'
-                  ? '🎓 Mitt Diplom!'
-                  : '🎓 My Diploma!'
-                : lang === 'sv'
-                ? '📒 Klistermärken'
-                : '📒 Stickers'}
-            </span>
-            <span className="px-1.5 py-0.5 rounded-full bg-black/40 text-cyan-200 text-[10px] font-black">
-              {unlockedStickers.length}/{FISH_SPECIES.length}
-            </span>
-          </button>
-
-          {/* Toggle Real Photos vs Illustrated Fish */}
-          <button
-            onClick={() => {
-              playBubbleSound();
-              setPhotoMode(!photoMode);
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
-              photoMode
-                ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
-                : 'bg-abyss-900 border-slate-700 text-slate-300 hover:text-white'
-            }`}
-          >
-            <Camera className="w-3.5 h-3.5 text-emerald-400" />
-            <span>
-              {photoMode
-                ? lang === 'sv'
-                  ? '📸 Foto-fiskar'
-                  : '📸 Photo Fish'
-                : lang === 'sv'
-                ? '🎨 Tecknade'
-                : '🎨 Illustrated'}
-            </span>
-          </button>
-
-          {/* Show water zones overlay */}
-          <button
-            onClick={() => {
-              playBubbleSound();
-              setShowZoneOverlay(!showZoneOverlay);
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
-              showZoneOverlay
-                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                : 'bg-abyss-900 border-slate-700 text-slate-300 hover:text-white'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">
-              {lang === 'sv' ? 'Zoner' : 'Zones'}
-            </span>
-          </button>
-
-          {/* Day / Night Moonlight toggle */}
-          <button
-            onClick={() => {
-              playBubbleSound();
-              setNightMode(!nightMode);
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
-              nightMode
-                ? 'bg-indigo-500/25 border-indigo-400 text-indigo-200'
-                : 'bg-abyss-900 border-slate-700 text-slate-300 hover:text-white'
-            }`}
-          >
-            {nightMode ? (
-              <>
-                <Moon className="w-3.5 h-3.5 text-indigo-300" />
-                <span>{lang === 'sv' ? 'Natt' : 'Night'}</span>
-              </>
-            ) : (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-300" />
-                <span>{lang === 'sv' ? 'Dag' : 'Day'}</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* KIDS QUEST BANNER ("Fisk-Jakten") */}
+    <div className="space-y-3">
+      {/* KIDS QUEST CLUE CARD (Only visible when Fisk-Jakten is active) */}
       {questActive && questTarget && (
-        <div className="px-4 sm:px-6 py-3 bg-gradient-to-r from-amber-500/25 via-pink-500/20 to-cyan-500/25 border-b border-amber-400/40 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="p-4 rounded-2xl bg-[#FFFBEB] border-2 border-amber-400 shadow-md flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
             <img
               src={getKidMeta(questTarget.id).photoUrl}
               alt={questTarget.nameSv}
-              className="w-12 h-12 rounded-2xl object-cover border-2 border-amber-300 shadow-md"
+              className="w-14 h-14 rounded-2xl object-cover border-2 border-amber-400 shadow-sm"
             />
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
-                  {questSolved
-                    ? lang === 'sv'
-                      ? '🎉 HURRA! DU HITTADE RÄTT FISK!'
-                      : '🎉 HOORAY! YOU FOUND IT!'
-                    : lang === 'sv'
-                    ? '🕵️‍♂️ FISK-JAKTEN — TRYCK PÅ RÄTT FISK I AKVARIET:'
-                    : '🕵️‍♂️ FISH HUNT — TAP THIS FISH IN THE TANK:'}
-                </span>
-              </div>
-              <p className="text-sm sm:text-base font-black text-white">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-amber-800">
                 {questSolved
                   ? lang === 'sv'
-                    ? `Bra jobbat! Det var en ${questTarget.nameSv}! (${getKidMeta(questTarget.id).superpowerSv})`
-                    : `Awesome job! That was a ${questTarget.nameEn}!`
+                    ? '🎉 Rätt gissat!'
+                    : '🎉 You found it!'
+                  : lang === 'sv'
+                  ? '🕵️‍♂️ Fisk-Jakten — Tryck på rätt fisk i vattnet:'
+                  : '🕵️‍♂️ Fish Hunt — Tap this fish in the water:'}
+              </span>
+              <p className="text-base sm:text-lg font-extrabold text-[#12262A]">
+                {questSolved
+                  ? lang === 'sv'
+                    ? `Hurra! Det var en ${questTarget.nameSv}!`
+                    : `Hooray! That was a ${questTarget.nameEn}!`
                   : lang === 'sv'
                   ? getKidMeta(questTarget.id).questClueSv
                   : getKidMeta(questTarget.id).questClueEn}
@@ -710,45 +503,29 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {starsEarned >= 3 && (
-              <button
-                onClick={() => {
-                  playSuccessChime();
-                  setAlbumInitialTab('diploma');
-                  setAlbumModalOpen(true);
-                }}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:brightness-110 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
-              >
-                <Award className="w-3.5 h-3.5" />
-                <span>{lang === 'sv' ? '🎓 Visa Diplom!' : '🎓 View Diploma!'}</span>
-              </button>
-            )}
-
             <button
               onClick={() => {
                 const meta = getKidMeta(questTarget.id);
-                speakKidsText(
-                  lang === 'sv' ? meta.questClueSv : meta.questClueEn,
-                  lang
-                );
+                speakKidsText(lang === 'sv' ? meta.questClueSv : meta.questClueEn, lang);
               }}
-              className="px-3 py-1.5 rounded-xl bg-abyss-950/90 hover:bg-abyss-800 text-amber-200 border border-amber-400/40 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
             >
-              <Volume2 className="w-3.5 h-3.5" />
-              <span>{lang === 'sv' ? 'Lyssna igen' : 'Hear Clue'}</span>
+              <Volume2 className="w-4 h-4" />
+              <span>{lang === 'sv' ? 'Lyssna' : 'Listen'}</span>
             </button>
 
             <button
               onClick={() => pickNextQuestTarget(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center gap-1 shadow-md cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
-              <span>{lang === 'sv' ? 'Nästa fisk' : 'Next Fish'}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span>{lang === 'sv' ? 'Nästa fisk' : 'Next fish'}</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
 
             <button
               onClick={() => setQuestActive(false)}
-              className="p-1.5 rounded-xl bg-abyss-950/80 text-slate-400 hover:text-white cursor-pointer"
+              className="p-2 rounded-xl text-slate-500 hover:bg-amber-100 cursor-pointer"
+              aria-label="Close game"
             >
               <X className="w-4 h-4" />
             </button>
@@ -756,207 +533,251 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
         </div>
       )}
 
-      {/* Main Glass Aquarium Viewport */}
-      <div
-        ref={tankRef}
-        onClick={(e) => handleDropFood(e.clientX, e.clientY)}
-        className={`relative w-full h-[320px] sm:h-[390px] bg-gradient-to-b ${getWaterGradient()} overflow-hidden cursor-pointer select-none transition-colors duration-700`}
-      >
-        {/* Top Water Surface Shimmer & Light Rays */}
-        <div className="absolute inset-x-0 top-0 h-5 bg-gradient-to-b from-cyan-200/25 to-transparent border-b border-cyan-200/20 pointer-events-none" />
-        {!nightMode && (
-          <div
-            className="absolute inset-0 opacity-25 pointer-events-none"
-            style={{
-              background:
-                'repeating-linear-gradient(108deg, transparent 0%, rgba(255,255,255,0.08) 6%, transparent 14%)',
-            }}
-          />
-        )}
+      {/* THE GLASS AQUARIUM STAGE */}
+      <div className="relative rounded-[28px] border-[6px] sm:border-[8px] border-[#182C30] bg-[#08323a] shadow-2xl overflow-hidden">
+        {/* Clean Floating Top Overlay Controls */}
+        <div className="absolute top-3 inset-x-3 sm:inset-x-4 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+          {/* Primary Actions: Feed & Play */}
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              onClick={() => handleDropFood()}
+              className="px-4 py-2 rounded-full bg-[#F59E0B] hover:bg-[#FBBF24] active:scale-95 text-slate-950 font-extrabold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg cursor-pointer transition"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{lang === 'sv' ? 'Mata fiskarna' : 'Feed fish'}</span>
+            </button>
 
-        {/* Water Zone Guide Overlay (Top / Middle / Bottom) */}
-        {showZoneOverlay && (
-          <div className="absolute inset-0 pointer-events-none z-20 flex flex-col">
-            <div className="h-[33%] border-b border-dashed border-cyan-300/40 flex items-start justify-end p-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-abyss-950/80 text-cyan-200 text-[11px] font-bold border border-cyan-400/30">
-                {lang === 'sv' ? 'Ytskikt (Guppy, Kampfisk, Gurami, Sebrafisk)' : 'Top Zone (Surface Swimmers)'}
-              </span>
-            </div>
-            <div className="h-[38%] border-b border-dashed border-cyan-300/40 flex items-start justify-end p-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-abyss-950/80 text-emerald-200 text-[11px] font-bold border border-emerald-400/30">
-                {lang === 'sv' ? 'Mellanskikt (Tetror, Rasboror, Platy, Skalar)' : 'Mid Zone (Schooling Fish)'}
-              </span>
-            </div>
-            <div className="flex-1 flex items-start justify-end p-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-abyss-950/80 text-amber-200 text-[11px] font-bold border border-amber-400/30">
-                {lang === 'sv' ? 'Bottenskikt (Pansarmal, Kuhlii-ål, Ancistrus, Räkor)' : 'Bottom Zone (Clean-up Crew)'}
-              </span>
-            </div>
+            <button
+              onClick={() => {
+                if (!questActive) {
+                  setQuestActive(true);
+                  pickNextQuestTarget(true);
+                } else {
+                  setQuestActive(false);
+                }
+              }}
+              className={`px-3.5 py-2 rounded-full text-xs sm:text-sm font-extrabold transition flex items-center gap-1.5 shadow-lg cursor-pointer ${
+                questActive
+                  ? 'bg-white text-[#12262A]'
+                  : 'bg-[#12262A]/80 hover:bg-[#12262A] text-white backdrop-blur-md border border-white/20'
+              }`}
+            >
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <span>{lang === 'sv' ? 'Fisk-Jakten' : 'Fish Hunt'}</span>
+              {starsEarned > 0 && (
+                <span className="ml-0.5 text-amber-300 font-black">★ {starsEarned}</span>
+              )}
+            </button>
           </div>
-        )}
 
-        {/* Poppable Rising Air Bubbles */}
-        {BUBBLES.map((b) => (
-          <div
-            key={b.id}
-            onClick={(e) => {
-              e.stopPropagation();
-              playPopSound();
-            }}
-            className="absolute bottom-8 rounded-full bg-cyan-200/35 hover:bg-white/70 border border-white/40 cursor-pointer transition-transform hover:scale-150"
-            style={{
-              left: `${b.x}%`,
-              width: `${b.size}px`,
-              height: `${b.size}px`,
-              animation: `floatBubble ${b.duration}s linear ${b.delay}s infinite`,
-            }}
-            title={lang === 'sv' ? 'Plopp!' : 'Pop!'}
-          />
-        ))}
+          {/* Quiet Right Utilities: Stickers/Diploma & Day/Night */}
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <button
+              onClick={() => {
+                playBubbleSound();
+                setAlbumInitialTab(starsEarned >= 3 ? 'diploma' : 'stickers');
+                setAlbumModalOpen(true);
+              }}
+              className="px-3 py-2 rounded-full bg-[#12262A]/80 hover:bg-[#12262A] text-white backdrop-blur-md border border-white/20 text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer transition"
+              title={lang === 'sv' ? 'Klistermärken & Diplom' : 'Stickers & Diploma'}
+            >
+              <Award className="w-4 h-4 text-amber-300" />
+              <span className="hidden sm:inline">
+                {lang === 'sv' ? 'Klistermärken' : 'Stickers'}
+              </span>
+              <span className="text-amber-300 font-extrabold">
+                {unlockedStickers.length}/{FISH_SPECIES.length}
+              </span>
+            </button>
 
-        {/* Background Aquascape Plants, Driftwood & Decor SVG */}
-        <svg
-          viewBox="0 0 1000 360"
-          preserveAspectRatio="none"
-          className="absolute inset-0 w-full h-full pointer-events-none"
+            <button
+              onClick={() => {
+                playBubbleSound();
+                setNightMode(!nightMode);
+              }}
+              className="p-2 rounded-full bg-[#12262A]/80 hover:bg-[#12262A] text-white backdrop-blur-md border border-white/20 shadow-md cursor-pointer transition"
+              title={lang === 'sv' ? 'Växla dag / natt' : 'Toggle day / night'}
+            >
+              {nightMode ? (
+                <Moon className="w-4 h-4 text-indigo-300" />
+              ) : (
+                <Sun className="w-4 h-4 text-amber-300" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Main Water Viewport */}
+        <div
+          ref={tankRef}
+          onClick={(e) => handleDropFood(e.clientX, e.clientY)}
+          className={`relative w-full h-[310px] sm:h-[380px] bg-gradient-to-b ${getWaterGradient()} overflow-hidden cursor-pointer select-none transition-colors duration-700`}
         >
-          {/* Driftwood Root */}
-          {(aquascape === 'amazonas' || aquascape === 'blackwater' || aquascape === 'nature_planted') && (
-            <path
-              d="M120,335 Q180,220 340,180 Q240,245 260,335 Z M210,250 Q280,190 420,235 Q300,235 245,280 Z"
-              fill="#5c3a21"
-              opacity="0.75"
+          {/* Water Surface Shimmer & Sunbeams */}
+          <div className="absolute inset-x-0 top-0 h-5 bg-gradient-to-b from-cyan-100/25 to-transparent pointer-events-none" />
+          {!nightMode && (
+            <div
+              className="absolute inset-0 opacity-25 pointer-events-none"
+              style={{
+                background:
+                  'repeating-linear-gradient(108deg, transparent 0%, rgba(255,255,255,0.09) 6%, transparent 14%)',
+              }}
             />
           )}
 
-          {/* Lush Background Vallisneria & Amazon Sword Plants */}
-          <g opacity={nightMode ? 0.45 : 0.82}>
-            <path d="M40,335 Q20,210 55,95 Q65,210 58,335 Z" fill="#15803d" />
-            <path d="M65,335 Q95,190 70,80 Q50,200 78,335 Z" fill="#16a34a" />
-            <path d="M95,335 Q120,230 105,135 Q85,230 110,335 Z" fill="#22c55e" />
+          {/* Poppable Air Bubbles */}
+          {BUBBLES.map((b) => (
+            <div
+              key={b.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                playPopSound();
+              }}
+              className="absolute bottom-8 rounded-full bg-white/30 hover:bg-white/70 border border-white/40 cursor-pointer transition-transform hover:scale-150"
+              style={{
+                left: `${b.x}%`,
+                width: `${b.size}px`,
+                height: `${b.size}px`,
+                animation: `floatBubble ${b.duration}s linear ${b.delay}s infinite`,
+              }}
+            />
+          ))}
 
-            <ellipse cx="290" cy="305" rx="45" ry="22" fill="#15803d" />
-            <ellipse cx="325" cy="312" rx="38" ry="18" fill="#16a34a" />
-
-            <path d="M850,335 Q825,200 865,90 Q885,210 870,335 Z" fill="#15803d" />
-            <path d="M890,335 Q930,175 900,65 Q870,195 910,335 Z" fill="#16a34a" />
-            <path d="M935,335 Q960,220 945,115 Q920,220 950,335 Z" fill="#22c55e" />
-          </g>
-
-          {/* Smooth River Stones */}
-          <ellipse cx="180" cy="328" rx="42" ry="14" fill="#475569" />
-          <ellipse cx="220" cy="332" rx="28" ry="11" fill="#64748b" />
-          <ellipse cx="780" cy="328" rx="48" ry="15" fill="#475569" />
-
-          {/* Fine Golden Sand Substrate */}
-          <path
-            d="M0,322 Q250,308 500,320 T1000,316 L1000,360 L0,360 Z"
-            fill={nightMode ? '#473c28' : '#d6b37c'}
-          />
-          <path
-            d="M0,334 Q350,324 700,334 T1000,330 L1000,360 L0,360 Z"
-            fill={nightMode ? '#332b1c' : '#c29b61'}
-          />
-        </svg>
-
-        {/* Interactive Clickable Treasure Chest on the Bottom */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            playSuccessChime();
-            setTreasureOpen((prev) => !prev);
-          }}
-          className="absolute bottom-5 right-[18%] z-10 group cursor-pointer transition-transform hover:scale-110"
-          title={lang === 'sv' ? 'Klicka på skattkistan!' : 'Click the treasure chest!'}
-        >
-          <div className="relative flex flex-col items-center">
-            {treasureOpen && (
-              <span className="text-lg animate-bounce -mb-1">✨🪙💎✨</span>
-            )}
-            <span className="text-3xl sm:text-4xl drop-shadow-lg">
-              {treasureOpen ? '👑' : '🧰'}
-            </span>
-            <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2 py-0.5 rounded bg-abyss-950/90 text-amber-300 text-[10px] font-bold whitespace-nowrap border border-amber-400/30">
-              {lang === 'sv' ? 'Hemlig skattkista!' : 'Secret treasure!'}
-            </span>
-          </div>
-        </button>
-
-        {/* Sinking Food Pellets */}
-        {foodPellets.map((pellet) => (
-          <div
-            key={pellet.id}
-            className={`absolute rounded-full shadow-sm pointer-events-none ${
-              pellet.kind === 'wafer'
-                ? 'w-4 h-3 bg-emerald-500 border-2 border-emerald-800'
-                : pellet.kind === 'treat'
-                ? 'w-3.5 h-2 bg-rose-500 border border-rose-200 animate-pulse'
-                : 'w-2.5 h-2.5 bg-amber-300 border border-orange-500'
-            }`}
-            style={{
-              left: `${pellet.x}%`,
-              top: `${pellet.y}%`,
-            }}
-          />
-        ))}
-
-        {/* Floating Happy Hearts when Fish Eat */}
-        {reactions.map((r) => (
-          <div
-            key={r.id}
-            className="absolute -translate-x-1/2 -translate-y-1/2 text-base sm:text-lg pointer-events-none animate-bounce z-30"
-            style={{
-              left: `${r.x}%`,
-              top: `${r.y}%`,
-            }}
+          {/* Aquascape Scenery SVG */}
+          <svg
+            viewBox="0 0 1000 360"
+            preserveAspectRatio="none"
+            className="absolute inset-0 w-full h-full pointer-events-none"
           >
-            {r.symbol}
-          </div>
-        ))}
+            {(aquascape === 'amazonas' || aquascape === 'blackwater' || aquascape === 'nature_planted') && (
+              <path
+                d="M120,335 Q180,220 340,180 Q240,245 260,335 Z M210,250 Q280,190 420,235 Q300,235 245,280 Z"
+                fill="#5c3a21"
+                opacity="0.75"
+              />
+            )}
 
-        {/* Swimming Fish Instances */}
-        {simFish.length === 0 ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none">
-            <div className="bg-abyss-950/80 backdrop-blur-md border border-cyan-400/30 rounded-3xl p-6 max-w-md space-y-2 shadow-2xl">
-              <p className="text-base sm:text-lg font-extrabold text-white">
-                {lang === 'sv'
-                  ? 'Akvariet väntar på sina första fiskar! 🐠'
-                  : 'The aquarium is waiting for its first fish! 🐠'}
-              </p>
-              <p className="text-xs sm:text-sm text-slate-300">
-                {lang === 'sv'
-                  ? 'Välj ett färdigt akvarieförslag nedan eller tryck på "+ Lägg i akvariet" på valfri fisk för att se dem simma här!'
-                  : 'Pick a starter tank preset below or tap "+ Add to Tank" on any fish card to watch them swim!'}
-              </p>
+            <g opacity={nightMode ? 0.45 : 0.85}>
+              <path d="M40,335 Q20,210 55,95 Q65,210 58,335 Z" fill="#15803d" />
+              <path d="M65,335 Q95,190 70,80 Q50,200 78,335 Z" fill="#16a34a" />
+              <path d="M95,335 Q120,230 105,135 Q85,230 110,335 Z" fill="#22c55e" />
+
+              <ellipse cx="290" cy="305" rx="45" ry="22" fill="#15803d" />
+              <ellipse cx="325" cy="312" rx="38" ry="18" fill="#16a34a" />
+
+              <path d="M850,335 Q825,200 865,90 Q885,210 870,335 Z" fill="#15803d" />
+              <path d="M890,335 Q930,175 900,65 Q870,195 910,335 Z" fill="#16a34a" />
+              <path d="M935,335 Q960,220 945,115 Q920,220 950,335 Z" fill="#22c55e" />
+            </g>
+
+            <ellipse cx="180" cy="328" rx="42" ry="14" fill="#475569" />
+            <ellipse cx="220" cy="332" rx="28" ry="11" fill="#64748b" />
+            <ellipse cx="780" cy="328" rx="48" ry="15" fill="#475569" />
+
+            <path
+              d="M0,322 Q250,308 500,320 T1000,316 L1000,360 L0,360 Z"
+              fill={nightMode ? '#473c28' : '#d6b37c'}
+            />
+            <path
+              d="M0,334 Q350,324 700,334 T1000,330 L1000,360 L0,360 Z"
+              fill={nightMode ? '#332b1c' : '#c29b61'}
+            />
+          </svg>
+
+          {/* Clickable Secret Treasure Chest on the Sand */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              playSuccessChime();
+              setTreasureOpen((prev) => !prev);
+            }}
+            className="absolute bottom-5 right-[18%] z-10 cursor-pointer transition-transform hover:scale-110"
+            title={lang === 'sv' ? 'Öppna skattkistan!' : 'Open treasure chest!'}
+          >
+            <div className="flex flex-col items-center">
+              {treasureOpen && <span className="text-base animate-bounce -mb-1">✨🪙✨</span>}
+              <span className="text-2xl sm:text-3xl drop-shadow-md">
+                {treasureOpen ? '👑' : '🧰'}
+              </span>
             </div>
-          </div>
-        ) : (
-          simFish.map((f) => {
-            const meta = getKidMeta(f.species.id);
-            return (
-              <div
-                key={f.uid}
-                onClick={(e) => handleFishClick(e, f)}
-                className="absolute -translate-x-1/2 -translate-y-1/2 group cursor-pointer transition-transform hover:scale-125 z-10"
-                style={{
-                  left: `${f.x}%`,
-                  top: `${f.y}%`,
+          </button>
+
+          {/* Subtle Bottom-Left Theme Switcher */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-3 left-3 z-20 flex items-center gap-1 bg-[#12262A]/75 backdrop-blur-md p-1 rounded-full border border-white/15"
+          >
+            {themes.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  playBubbleSound();
+                  onAquascapeChange(t.id);
                 }}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition cursor-pointer ${
+                  aquascape === t.id
+                    ? 'bg-white text-[#12262A] shadow-sm'
+                    : 'text-white/80 hover:text-white'
+                }`}
               >
-                {photoMode ? (
-                  <div
-                    className={`relative rounded-full p-0.5 bg-gradient-to-tr from-cyan-400 to-amber-300 shadow-lg transition-transform ${
-                      !f.facingRight ? '-scale-x-100' : ''
-                    }`}
-                    style={{ transform: `scale(${Math.max(0.85, f.scale)})` }}
-                  >
-                    <img
-                      src={meta.photoUrl}
-                      alt={f.species.nameSv}
-                      className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white"
-                    />
-                  </div>
-                ) : (
+                {lang === 'sv' ? t.labelSv : t.labelEn}
+              </button>
+            ))}
+          </div>
+
+          {/* Sinking Food Pellets */}
+          {foodPellets.map((pellet) => (
+            <div
+              key={pellet.id}
+              className="absolute w-2.5 h-2.5 rounded-full bg-amber-300 border border-orange-500 shadow-sm pointer-events-none"
+              style={{
+                left: `${pellet.x}%`,
+                top: `${pellet.y}%`,
+              }}
+            />
+          ))}
+
+          {/* Happy Hearts */}
+          {reactions.map((r) => (
+            <div
+              key={r.id}
+              className="absolute -translate-x-1/2 -translate-y-1/2 text-base sm:text-lg pointer-events-none animate-bounce z-30"
+              style={{
+                left: `${r.x}%`,
+                top: `${r.y}%`,
+              }}
+            >
+              {r.symbol}
+            </div>
+          ))}
+
+          {/* Swimming Fish */}
+          {simFish.length === 0 ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none">
+              <div className="bg-[#12262A]/85 backdrop-blur-md border border-white/20 rounded-3xl p-6 max-w-sm space-y-1.5 shadow-xl text-white">
+                <p className="text-lg font-display font-bold">
+                  {lang === 'sv' ? 'Akvariet är tomt!' : 'The tank is empty!'}
+                </p>
+                <p className="text-xs text-white/80">
+                  {lang === 'sv'
+                    ? 'Välj en fisk nedan och tryck på "+ Lägg i" för att se den simma här.'
+                    : 'Pick any fish below and tap "+ Add" to watch it swim here.'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            simFish.map((f) => {
+              const meta = getKidMeta(f.species.id);
+              return (
+                <div
+                  key={f.uid}
+                  onClick={(e) => handleFishClick(e, f)}
+                  className="absolute -translate-x-1/2 -translate-y-1/2 group cursor-pointer transition-transform hover:scale-125 z-10"
+                  style={{
+                    left: `${f.x}%`,
+                    top: `${f.y}%`,
+                  }}
+                >
                   <div style={{ transform: `scale(${f.scale})` }}>
                     <FishIllustration
                       visual={f.species.visual}
@@ -964,75 +785,40 @@ export const InteractiveAquarium: React.FC<InteractiveAquariumProps> = ({
                       flipHorizontal={!f.facingRight}
                     />
                   </div>
-                )}
 
-                {/* Hover Tooltip with Real Mini Photo & Name */}
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 px-2 py-1 rounded-xl bg-abyss-950/95 text-cyan-200 text-[11px] font-extrabold whitespace-nowrap border border-cyan-400/40 shadow-xl flex items-center gap-1.5 z-30">
-                  <img
-                    src={meta.photoUrl}
-                    alt={f.species.nameSv}
-                    className="w-6 h-6 rounded-lg object-cover border border-cyan-300/40"
-                  />
-                  <span>
-                    {meta.emoji} {lang === 'sv' ? f.species.nameSv : f.species.nameEn}
-                  </span>
+                  {/* Hover Tooltip with Photo & Name */}
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-xl bg-[#12262A] text-white text-xs font-bold whitespace-nowrap shadow-xl flex items-center gap-1.5 z-30">
+                    <img
+                      src={meta.photoUrl}
+                      alt={f.species.nameSv}
+                      className="w-5 h-5 rounded-full object-cover"
+                    />
+                    <span>{lang === 'sv' ? f.species.nameSv : f.species.nameEn}</span>
+                  </div>
                 </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* Bottom Aquascape Selector Bar */}
-      <div className="px-4 sm:px-6 py-2.5 bg-abyss-950/90 border-t border-cyan-500/15 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2 overflow-x-auto py-0.5">
-          <span className="text-slate-400 font-bold flex items-center gap-1 flex-shrink-0">
-            <Palette className="w-3.5 h-3.5 text-cyan-400" />
-            <span>{lang === 'sv' ? 'Välj värld:' : 'World:'}</span>
-          </span>
-          {themes.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => {
-                playBubbleSound();
-                onAquascapeChange(t.id);
-              }}
-              className={`px-2.5 py-1 rounded-lg font-bold transition whitespace-nowrap cursor-pointer ${
-                aquascape === t.id
-                  ? 'bg-cyan-400 text-slate-950 shadow-sm'
-                  : 'bg-abyss-900 text-slate-300 hover:text-white border border-slate-800'
-              }`}
-            >
-              {lang === 'sv' ? t.labelSv : t.labelEn}
-            </button>
-          ))}
+              );
+            })
+          )}
         </div>
-
-        <span className="text-[11px] text-slate-400 hidden md:flex items-center gap-1">
-          <Info className="w-3.5 h-3.5 text-cyan-400" />
-          <span>
-            {lang === 'sv'
-              ? 'Tryck i vattnet för att släppa mat, smäll bubblor eller klicka på en fisk!'
-              : 'Tap water to drop food, pop bubbles, or tap any fish!'}
-          </span>
-        </span>
       </div>
 
       {/* Kids Sticker Album & Printable Diploma Modal */}
       <StickerDiplomaModal
         isOpen={albumModalOpen}
         onClose={() => setAlbumModalOpen(false)}
-        starsEarned={starsEarned}
         unlockedStickers={unlockedStickers}
-        onUnlockSticker={unlockSticker}
+        onUnlockSticker={(spId) => unlockSticker(spId)}
         onAddBonusStar={() => {
-          const next = starsEarned + 1;
-          setStarsEarned(next);
-          try {
-            localStorage.setItem('fena_kids_stars', String(next));
-          } catch {}
+          setStarsEarned((prev) => {
+            const next = prev + 1;
+            try {
+              localStorage.setItem('fena_kids_stars', String(next));
+            } catch {}
+            return next;
+          });
         }}
         onInspectSpecies={onInspectSpecies}
+        starsEarned={starsEarned}
         liters={liters}
         lang={lang}
         initialTab={albumInitialTab}
