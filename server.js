@@ -42,7 +42,7 @@ const stmtDeleteTank = db.prepare('DELETE FROM saved_tanks WHERE id = ?');
 
 const assets = sirv(path.resolve('dist'), {
   single: true,
-  dev: false,
+  dev: true,
   gzip: true,
   brotli: true,
 });
