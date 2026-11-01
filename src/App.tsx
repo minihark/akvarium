@@ -817,6 +817,26 @@ export function App() {
         )}
       </main>
 
+      {/* Studio Footer */}
+      <footer className="border-t border-[#E6E0D5] py-6 px-4 mt-12 bg-[#F4EFE6]/50 text-center font-mono text-xs text-[#5A6E72] flex flex-col sm:flex-row items-center justify-center gap-3">
+        <span>FENA & AKVARIUM • HARKCO NATURE STUDIO</span>
+        <a
+          href="https://vakt.apps.harkco.se"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Akvarium Status på Harkco Vakt"
+          className="inline-block hover:opacity-90 transition-opacity"
+        >
+          <img
+            src="https://vakt.apps.harkco.se/badge/akvarium.svg"
+            alt="Akvarium: operational"
+            height="20"
+            className="h-5 inline-block"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        </a>
+      </footer>
+
       {/* SPECIES STORY MODAL */}
       <SpeciesDetailModal
         species={inspectedSpecies}
